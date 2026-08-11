@@ -1,0 +1,37 @@
+{
+  "sessions": {
+    "043f5b96-faf7-455f-b587-245412f93866": {
+      "id": "043f5b96-faf7-455f-b587-245412f93866",
+      "type": "dm",
+      "scopeId": "personal:171232349@qq.com",
+      "threadRef": "web:171232349@qq.com:test1",
+      "title": "你好，测试一下",
+      "surface": "web",
+      "createdAt": 1786452092698,
+      "lastActivityAt": 1786452094114,
+      "messages": 2,
+      "turns": 1,
+      "entries": [
+        {
+          "seq": 1,
+          "parentSeq": null,
+          "type": "user",
+          "payload": {
+            "text": "你好，测试一下"
+          },
+          "createdAt": 1786452092698
+        },
+        {
+          "seq": 2,
+          "parentSeq": null,
+          "type": "assistant",
+          "payload": {
+            "text": "你好！我很好，功能正常。有什么需要帮助的吗？😊"
+          },
+          "createdAt": 1786452094114
+        }
+      ]
+    }
+  },
+  "projects": {}
+}

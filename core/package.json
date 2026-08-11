@@ -1,0 +1,16 @@
+{
+  "name": "core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenPilot Core — 最小业务 API（会话/消息/AI 回复），node:http 零运行时依赖",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../.env --experimental-strip-types --watch src/index.ts",
+    "start": "node --env-file-if-exists=../.env --experimental-strip-types src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
