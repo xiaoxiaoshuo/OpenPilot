@@ -170,7 +170,7 @@ body.resizing-sidebar {
   display: flex;
   align-items: center;
   gap: 9px;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 8px 8px 14px;
   font-size: 17px;
   font-weight: 600;
@@ -179,6 +179,7 @@ body.resizing-sidebar {
 }
 .brand-lockup {
   min-width: 0;
+  margin-right: auto;
   display: flex;
   align-items: center;
   gap: 9px;
