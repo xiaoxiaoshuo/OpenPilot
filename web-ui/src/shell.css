@@ -60,6 +60,7 @@ body {
    Rail width = the sidebar's 8px inline padding pair + the 34px toggle. */
 .layout.sidebar-closed .sidebar {
   width: var(--rail-w);
+  flex-basis: var(--rail-w);
 }
 body.resizing-sidebar .sidebar {
   transition: none;
@@ -80,6 +81,10 @@ body.resizing-sidebar .sidebar {
      stays focusable or exposed to assistive tech while the width animates shut. */
   opacity: 0;
   visibility: hidden;
+}
+/* 折叠后子元素 min-width 会把 rail 撑开，必须清零才能收窄到 --rail-w */
+.layout.sidebar-closed .sidebar > :not(.brand) {
+  min-width: 0;
 }
 /* Collapsed, the nav stays in the rail as icon-only buttons (tooltips carry the
    labels), so the rail keeps navigation instead of becoming a dead strip. */
@@ -108,6 +113,13 @@ body.resizing-sidebar .sidebar {
 .layout.sidebar-closed .brand {
   padding-inline: 0;
   gap: 0;
+  justify-content: center;
+}
+/* 窄栏里搜索 + 折叠两个按钮并排（各 24px，共 48px ≤ 50px rail） */
+.layout.sidebar-closed .brand .icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
 }
 .layout.sidebar-closed .brand-lockup {
   width: 0;

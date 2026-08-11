@@ -153,10 +153,15 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
 
   function me(req: IncomingMessage, res: ServerResponse): void {
     const session = currentSession(req, Date.now());
-    if (!session) return json(res, 401, { authenticated: false });
+    if (!session) return json(res, 401, { error: "sign in", mode: "portal", reason: "unauthenticated" });
+    // web-ui 前端期望的 Me 结构（含 user 字段）
     return json(res, 200, {
-      authenticated: true,
-      principal: session.sub,
+      user: session.sub,
+      org: "local",
+      mode: "portal",
+      slackWorkspaceUrl: null,
+      impersonatedBy: null,
+      permissions: [],
       ...(session.name ? { name: session.name } : {}),
     });
   }

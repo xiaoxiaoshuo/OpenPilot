@@ -1,6 +1,5 @@
 import { html, nothing, render, type TemplateResult } from "lit";
 import {
-  ArrowLeft,
   Box,
   Brain,
   ChevronDown,
@@ -14,6 +13,7 @@ import {
   Plus,
   RefreshCw,
   Rocket,
+  Search,
   type IconNode,
 } from "lucide";
 import "@mariozechner/mini-lit/dist/ThemeToggle.js";
@@ -55,7 +55,6 @@ import {
   renderList,
   resetSessionsState,
   sessionsState,
-  toggleWebOnly,
 } from "./sessions";
 import { openCronById, renderCronsPage, resetActiveCron, routeCronsHistory } from "./crons";
 import { renderFiles } from "./files";
@@ -424,6 +423,15 @@ export function mountShell(): void {
           <div class="brand">
             <div class="brand-lockup">${brandMark()}<span class="brand-name">${brandName()}</span></div>
             <button
+              class="icon-btn subtle sidebar-search-btn"
+              type="button"
+              title=${lang() === "zh" ? "搜索会话" : "Search conversations"}
+              aria-label=${lang() === "zh" ? "搜索会话" : "Search conversations"}
+              @click=${onSearchClick}
+            >
+              ${icon(Search, 17)}
+            </button>
+            <button
               class="icon-btn subtle sidebar-toggle sidebar-collapse-toggle"
               type="button"
               title="Hide sidebar"
@@ -440,9 +448,14 @@ export function mountShell(): void {
               <span class="avatar">${initials(appState.me?.user ?? "?")}</span>
               <span class="user-name">${appState.me?.user ?? ""}</span>
             </div>
-            <a class="icon-btn subtle" href=${ADMIN_HOME_URL} title="Back to admin" aria-label="Back to admin"
-              >${icon(ArrowLeft, 17)}</a
+            <button
+              class="lang-toggle"
+              type="button"
+              title=${lang() === "zh" ? "Switch to English" : "切换到中文"}
+              @click=${() => setLang(lang() === "zh" ? "en" : "zh")}
             >
+              ${t("nav.langToggle")}
+            </button>
             <theme-toggle .includeSystem=${true} title="Color scheme: light / dark / system"></theme-toggle>
             <button class="icon-btn subtle" title="Sign out" aria-label="Sign out" @click=${signOut}>
               ${icon(LogOut, 17)}
@@ -521,36 +534,21 @@ export function renderSidebarTop(): void {
           navWorkspaceOpen,
           toggleNavWorkspace,
           html`
-            ${navRow("contexts", ICON.contexts, t("nav.projects"))} ${navRow("chats", ICON.chats, t("nav.chats"))}
+            ${navRow("contexts", ICON.contexts, t("nav.projects"))}
+            <!-- 会话按钮已移至顶部搜索按钮（brand 区折叠按钮左侧） -->
+            <!-- 暂时隐藏：文件/定时任务/密钥库/应用/记忆/技能
             ${navRow("files", ICON.files, t("nav.files"))} ${navRow("crons", ICON.crons, t("nav.crons"))}
             ${navRow("keychain", ICON.keychain, t("nav.keychain"))} ${navRow("deploys", ICON.deploys, t("nav.apps"))}
             ${navRow("memory", ICON.memory, t("nav.memory"))} ${navRow("skills", ICON.skills, t("nav.skills"))}
+            -->
           `,
         )}
       </nav>
-      <button
-        class="lang-toggle"
-        type="button"
-        title=${lang() === "zh" ? "Switch to English" : "切换到中文"}
-        @click=${() => setLang(lang() === "zh" ? "en" : "zh")}
-      >
-        ${t("nav.langToggle")}
-      </button>
       ${
         appState.currentView === "chats"
           ? html`
               <div class="section-label recents-label">
                 <span>${t("nav.sessions")}</span>
-                <button
-                  class="web-only-toggle ${sessionsState.webOnly ? "on" : ""}"
-                  type="button"
-                  role="switch"
-                  aria-checked=${sessionsState.webOnly ? "true" : "false"}
-                  title=${sessionsState.webOnly ? "Showing web chats only" : "Hide non-web conversations"}
-                  @click=${toggleWebOnly}
-                >
-                  <span>Web only</span><span class="mini-switch"><span class="mini-knob"></span></span>
-                </button>
               </div>
             `
           : ""
@@ -661,6 +659,18 @@ export function showMainEmpty(text: string): void {
 
 function toggleSidebar(): void {
   setSidebarOpen(!sidebarOpen);
+}
+
+function onSearchClick(): void {
+  closeSidebarOnNarrowView();
+  if (appState.currentView !== "chats") switchView("chats");
+  else refreshActiveView("chats");
+  // 聚焦会话搜索框
+  requestAnimationFrame(() => {
+    const input = appEl?.querySelector<HTMLInputElement>(".list-search input");
+    input?.focus();
+    input?.select();
+  });
 }
 
 export function closeSidebarOnNarrowView(): void {
