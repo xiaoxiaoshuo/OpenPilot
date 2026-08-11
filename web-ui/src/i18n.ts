@@ -14,8 +14,8 @@ const STORAGE_KEY = "ui.lang";
 const zh: Record<string, string> = {
   // 导航
   "nav.browse": "浏览",
-  "nav.projects": "项目",
-  "nav.chats": "对话",
+  "nav.projects": "群组",
+  "nav.chats": "会话",
   "nav.files": "文件",
   "nav.crons": "定时任务",
   "nav.keychain": "密钥库",
@@ -27,7 +27,7 @@ const zh: Record<string, string> = {
   "nav.langToggle": "EN",
 
   // 会话页
-  "sessions.title": "对话",
+  "sessions.title": "会话",
   "sessions.newChat": "新建对话",
   "sessions.newSession": "新建会话",
   "sessions.search": "搜索对话…",
@@ -106,8 +106,8 @@ const zh: Record<string, string> = {
 
 const en: Record<string, string> = {
   "nav.browse": "Browse",
-  "nav.projects": "Projects",
-  "nav.chats": "Chats",
+  "nav.projects": "Groups",
+  "nav.chats": "Conversations",
   "nav.files": "Files",
   "nav.crons": "Crons",
   "nav.keychain": "Keychain",
