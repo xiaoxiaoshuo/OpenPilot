@@ -1067,7 +1067,7 @@ a.chat-row-open {
   padding: 0 12px;
   border: 0;
   border-radius: 999px;
-  background: var(--accent, #7c3aed);
+  background: #7c3aed; /* 品牌紫，不依赖主题 --accent */
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -1123,8 +1123,9 @@ a.chat-row-open {
   max-width: calc(100vw - 32px);
   padding: 20px;
   border-radius: 14px;
-  background: var(--surface, #1a1d27);
-  border: 1px solid var(--border, #2a2e3d);
+  background: var(--popover); /* 浅色=白 / 深色=深灰，自动适配 */
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
 }
 .op-dialog h3 {
@@ -1138,14 +1139,14 @@ a.chat-row-open {
   height: 40px;
   padding: 0 14px;
   border-radius: 10px;
-  border: 1px solid var(--border, #2a2e3d);
-  background: color-mix(in srgb, var(--secondary, #262a3a) 60%, transparent);
-  color: var(--foreground, #e6e6e6);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--secondary) 60%, transparent);
+  color: var(--foreground);
   font-size: 14px;
   outline: none;
 }
 .op-tag-input:focus {
-  border-color: var(--accent, #7c3aed);
+  border-color: #7c3aed;
 }
 .op-dialog-actions {
   display: flex;
@@ -1163,11 +1164,11 @@ a.chat-row-open {
   cursor: pointer;
 }
 .op-btn-gray {
-  background: color-mix(in srgb, var(--secondary, #2a2e3d) 90%, #000 5%);
-  color: var(--foreground, #e6e6e6);
+  background: color-mix(in srgb, var(--secondary) 90%, #000 5%);
+  color: var(--foreground);
 }
 .op-btn-primary {
-  background: var(--accent, #7c3aed);
+  background: #7c3aed;
   color: #fff;
 }
 .op-btn-primary:disabled {
