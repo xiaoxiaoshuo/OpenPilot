@@ -1,0 +1,19 @@
+{
+  "name": "idp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenPilot IdP — 标准 OIDC 身份提供方（对接 GitHub / Google 第三方登录），参考 qm plugins/auth",
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types --watch src/index.ts",
+    "start": "node --experimental-strip-types src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
