@@ -21,6 +21,7 @@ import {
   Plus,
   RefreshCw,
   SquareTerminal,
+  Trash2,
   User,
   Users,
   X,
@@ -825,14 +826,14 @@ function sessionRow(s: CoreSession, projectChild = false): TemplateResult {
               <button
                 class="session-menu-btn session-archive-btn"
                 type="button"
-                title=${s.archived ? "Unarchive" : "Archive"}
-                aria-label=${`${s.archived ? "Unarchive" : "Archive"} ${sessionTitle(s)}`}
+                title=${s.archived ? t("sessions.restore") : t("sessions.delete")}
+                aria-label=${`${s.archived ? t("sessions.restore") : t("sessions.delete")} ${sessionTitle(s)}`}
                 @click=${(e: Event) => {
                   e.stopPropagation();
                   setArchived(s, !s.archived);
                 }}
               >
-                ${s.archived ? icon(ArchiveRestore, 15) : icon(Archive, 15)}
+                ${s.archived ? icon(ArchiveRestore, 15) : icon(Trash2, 15)}
               </button>
               <button
                 class="session-menu-btn"
@@ -884,13 +885,13 @@ function sessionMenuPopover(s: CoreSession): TemplateResult {
   return html`
     <div class="session-menu-popover" role="menu" ${ref(placeSessionMenu)} @click=${(e: Event) => e.stopPropagation()}>
       <button class="session-menu-option" type="button" role="menuitem" @click=${() => void copySessionLink(s)}>
-        ${icon(Link, 15)}<span>Copy link</span>
+        ${icon(Link, 15)}<span>${t("sessions.copyLink")}</span>
       </button>
       <button class="session-menu-option" type="button" role="menuitem" @click=${() => setPinned(s, !pinned)}>
-        ${pinned ? icon(PinOff, 15) : icon(Pin, 15)}<span>${pinned ? "Unpin" : "Pin"}</span>
+        ${pinned ? icon(PinOff, 15) : icon(Pin, 15)}<span>${pinned ? t("sessions.unpin") : t("sessions.pin")}</span>
       </button>
       <button class="session-menu-option" type="button" role="menuitem" @click=${() => startRename(s)}>
-        ${icon(Pencil, 15)}<span>Rename</span>
+        ${icon(Pencil, 15)}<span>${t("sessions.rename")}</span>
       </button>
       <button
         class="session-menu-option"
@@ -899,10 +900,10 @@ function sessionMenuPopover(s: CoreSession): TemplateResult {
         ?disabled=${refreshingTitle}
         @click=${() => void refreshSessionTitle(s)}
       >
-        ${icon(RefreshCw, 15)}<span>${refreshingTitle ? "Refreshing title" : "Refresh title"}</span>
+        ${icon(RefreshCw, 15)}<span>${refreshingTitle ? t("sessions.refreshingTitle") : t("sessions.refreshTitle")}</span>
       </button>
       <button class="session-menu-option" type="button" role="menuitem" @click=${() => setArchived(s, !archived)}>
-        ${archived ? icon(ArchiveRestore, 15) : icon(Archive, 15)}<span>${archived ? "Unarchive" : "Archive"}</span>
+        ${archived ? icon(ArchiveRestore, 15) : icon(Trash2, 15)}<span>${archived ? t("sessions.restore") : t("sessions.delete")}</span>
       </button>
       ${sessionColorRow(s)}
     </div>
