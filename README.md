@@ -94,6 +94,7 @@ OpenPilot Chat 是一个简化版在线聊天应用，支持多用户认证、�
 | `8097` | gateway | 统一入口 / OIDC Client / 反代 |
 | `8099` | IdP | 身份提供方（GitHub / Google） |
 | `8196` | web-ui | Lit 前端 + 服务端代理 |
+| `8081` | core | 最小业务 API（会话/消息/DeepSeek AI） |
 
 > ⚠️ `8097` 与原 QM 项目的 portal 端口相同。**当前原 QM portal 未运行**，因此不冲突；
 > 若日后需要 QM portal 与 OpenPilot gateway 同时运行，请给 gateway 换端口（改 `PORT` / `GATEWAY_PUBLIC_URL`）。
