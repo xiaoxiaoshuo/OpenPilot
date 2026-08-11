@@ -41,6 +41,28 @@ interface Run {
 const runs = new Map<string, Run>();
 const runsBySession = new Map<string, string[]>(); // sessionId -> runIds
 
+// ── 推送：SSE 长连接 + 投递队列 ──
+const sseClients = new Set<ServerResponse>();
+const pendingDeliveries = new Map<string, { threadRef: string; createdAt: number }>();
+
+function sseWrite(res: ServerResponse, event: string, data: unknown): void {
+  try {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  } catch {
+    sseClients.delete(res);
+  }
+}
+
+function pushSessionState(threadRef: string, sessionId: string, state: "working" | "idle", at: number): void {
+  const frame = { threadRef, sessionId, state, at };
+  for (const res of [...sseClients]) sseWrite(res, "session_state", frame);
+}
+
+function enqueueDelivery(threadRef: string): void {
+  const id = randomUUID();
+  pendingDeliveries.set(id, { threadRef, createdAt: Date.now() });
+}
+
 // ───────────────────────── 工具 ─────────────────────────
 
 function principalOf(req: IncomingMessage, url: URL): string | null {
@@ -110,11 +132,52 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (method === "GET" && path === "/v1/surface-config")
     return send(res, 200, { branding: {}, surface: "web", org: ORG });
   if (method === "GET" && path === "/v1/session-state/events") {
-    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store" });
-    res.end();
+    res.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    res.write(": open\n\n");
+    sseClients.add(res);
+    const beat = setInterval(() => {
+      try {
+        res.write(": ping\n\n");
+      } catch {
+        sseClients.delete(res);
+        clearInterval(beat);
+      }
+    }, 25_000);
+    req.on("close", () => {
+      clearInterval(beat);
+      sseClients.delete(res);
+    });
     return;
   }
   if (method === "POST" && path === "/v1/session-cap") return send(res, 200, { token: "", actorId: principal ?? "" });
+
+  // 后台轮询端点（web-ui 定时任务不携带用户身份头）：deliveries 全局队列 + SSE
+  if (method === "GET" && path === "/v1/deliveries") {
+    const type = url.searchParams.get("type");
+    if (type !== "web") return send(res, 200, { deliveries: [] });
+    return send(
+      res,
+      200,
+      {
+        deliveries: [...pendingDeliveries.entries()].map(([id, d]) => ({
+          id,
+          idempotencyKey: id,
+          createdAt: d.createdAt,
+          destination: { target: d.threadRef },
+        })),
+      },
+    );
+  }
+  if (method === "POST" && path.match(/^\/v1\/deliveries\/[^/]+\/ack$/)) {
+    const id = decodeURIComponent(path.split("/")[3] ?? "");
+    pendingDeliveries.delete(id);
+    return send(res, 200, { ok: true });
+  }
 
   // ---- 需要 principal 的端点 ----
   if (!principal) return send(res, 401, { error: "sign in", message: "principal required" });
@@ -222,6 +285,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const run: Run = { id: randomUUID(), sessionId: session.id, threadRef, status: "working", startedAt: at };
     runs.set(run.id, run);
     runsBySession.set(session.id, [...(runsBySession.get(session.id) ?? []), run.id]);
+    pushSessionState(threadRef, session.id, "working", at);
+    enqueueDelivery(threadRef);
     runAssistant(session, run, model).catch((e) => console.error(`[core] assistant run ${run.id} failed:`, e));
     return send(res, 200, { runId: run.id, sessionId: session.id, threadRef });
   }
@@ -262,8 +327,6 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     });
   }
 
-  if (method === "GET" && path === "/v1/deliveries") return send(res, 200, { deliveries: [] });
-  if (method === "POST" && path.match(/^\/v1\/deliveries\/[^/]+\/ack$/)) return send(res, 200, { ok: true });
   if (method === "GET" && path === "/v1/directory/meta") return send(res, 200, { workspaceUrl: null });
   if (method === "GET" && path === "/v1/directory/resolve") return send(res, 200, { matches: [] });
 
@@ -338,6 +401,8 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
     };
     session.entries.push(errorEntry);
     store.patchSession(session.id, { entries: session.entries, messages: session.messages + 1 });
+    pushSessionState(session.threadRef, session.id, "idle", Date.now());
+    enqueueDelivery(session.threadRef);
     return;
   }
   const at = Date.now();
@@ -355,6 +420,8 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
   });
   run.status = "done";
   run.finishedAt = at;
+  pushSessionState(session.threadRef, session.id, "idle", at);
+  enqueueDelivery(session.threadRef);
 }
 
 // ───────────────────────── server ─────────────────────────
