@@ -2,15 +2,15 @@
  * i18n — 轻量国际化模块（零依赖）
  *
  * - 字典驱动：key 用点分命名（nav.files、sessions.newChat）
- * - 语言规则：默认中文；localStorage["ui.lang"] 记录用户手动切换的选择并优先
- * - 切换：setLang() 写入 localStorage 并刷新页面（函数式渲染下最可靠的重渲染方式）
+ * - 语言规则：默认中文；sessionStorage["ui.lang"] 仅记住当前标签页会话内的手动切换，
+ *   新开标签页/新会话一律回到中文默认
+ * - 切换：setLang() 写入 sessionStorage 并刷新页面（函数式渲染下最可靠的重渲染方式）
  * - 占位符：t("hello", { name: "world" }) 支持 {name} 替换
  */
 
 export type Lang = "zh" | "en";
 
 const STORAGE_KEY = "ui.lang";
-
 const zh: Record<string, string> = {
   // 导航
   "nav.browse": "浏览",
@@ -142,12 +142,12 @@ const en: Record<string, string> = {
 const dicts: Record<Lang, Record<string, string>> = { zh, en };
 
 function detectLang(): Lang {
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = sessionStorage.getItem(STORAGE_KEY);
   if (stored === "zh" || stored === "en") return stored;
   return "zh";
 }
 
-let current: Lang = typeof localStorage !== "undefined" ? detectLang() : "zh";
+let current: Lang = typeof sessionStorage !== "undefined" ? detectLang() : "zh";
 
 /** 当前语言 */
 export function lang(): Lang {
@@ -165,12 +165,12 @@ export function t(key: string, params?: Record<string, string | number>): string
   return text;
 }
 
-/** 切换语言：写入 localStorage，同步 <html lang>，刷新页面重渲染 */
+/** 切换语言：写入 sessionStorage（仅当前标签页会话），同步 <html lang>，刷新页面重渲染 */
 export function setLang(next: Lang): void {
   if (next === current) return;
   current = next;
   try {
-    localStorage.setItem(STORAGE_KEY, next);
+    sessionStorage.setItem(STORAGE_KEY, next);
   } catch {
     // 隐私模式下忽略
   }
