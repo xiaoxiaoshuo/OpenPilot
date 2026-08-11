@@ -95,6 +95,10 @@ function sessionView(s: StoredSession): Record<string, unknown> {
     lastActivityAt: s.lastActivityAt,
     messages: s.messages,
     turns: s.turns,
+    ...(s.tags?.length ? { tags: s.tags } : {}),
+    ...(s.archived ? { archived: true } : {}),
+    ...(s.pinned ? { pinned: true } : {}),
+    ...(s.color ? { color: s.color } : {}),
     ...(working ? { working: true } : {}),
   };
 }
@@ -236,6 +240,38 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       entries: entries.map(entryView),
       earlierEntries: Math.max(0, s.entries.length - entries.length),
     });
+  }
+
+  if (method === "POST" && path.startsWith("/v1/sessions/")) {
+    const rest = path.slice("/v1/sessions/".length);
+    const id = decodeURIComponent(rest.split("/")[0] ?? "");
+    const s = store.getSession(id);
+    if (!s) return send(res, 404, { error: "not_found" });
+    if (!(s.scopeId === `personal:${principal}` || s.scopeId.startsWith("group:"))) {
+      return send(res, 403, { error: "forbidden" });
+    }
+    let body: Record<string, unknown> = {};
+    try {
+      body = JSON.parse(await readBody(req, 200_000)) as Record<string, unknown>;
+    } catch {
+      return send(res, 400, { error: "bad_request" });
+    }
+    const patch: Partial<StoredSession> = {};
+    if (body.title === null || typeof body.title === "string") patch.title = body.title as string | null;
+    if (typeof body.archived === "boolean") patch.archived = body.archived;
+    if (typeof body.pinned === "boolean") patch.pinned = body.pinned;
+    if (body.color === null || typeof body.color === "string") patch.color = body.color as string | null;
+    if (Array.isArray(body.tags)) {
+      const tags = body.tags
+        .filter((x): x is string => typeof x === "string")
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .slice(0, 20);
+      patch.tags = [...new Set(tags)];
+    }
+    store.patchSession(id, patch);
+    const updated = store.getSession(id)!;
+    return send(res, 200, { session: sessionView(updated) });
   }
 
   if (method === "POST" && path === "/v1/turns") {

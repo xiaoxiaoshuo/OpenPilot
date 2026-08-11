@@ -63,6 +63,7 @@ export interface CoreSession {
   watches?: number;
   forkedFrom?: { sessionId: string; title?: string | null };
   forkBoundarySeq?: number;
+  tags?: string[];
 }
 
 export function inheritedTranscript(
@@ -191,7 +192,13 @@ function browserTimezone(): string {
 
 export async function updateSession(
   id: string,
-  patch: { title?: string | null; archived?: boolean; pinned?: boolean; color?: string | null },
+  patch: {
+    title?: string | null;
+    archived?: boolean;
+    pinned?: boolean;
+    color?: string | null;
+    tags?: string[];
+  },
 ): Promise<{ session: CoreSession }> {
   return api<{ session: CoreSession }>(`/api/sessions/${encodeURIComponent(id)}`, {
     method: "POST",

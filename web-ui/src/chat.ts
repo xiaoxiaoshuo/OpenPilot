@@ -26,9 +26,11 @@ import {
   RefreshCw,
   Rocket,
   ScrollText,
+  Tag,
   Terminal,
   Users,
   Wrench,
+  X,
   type IconNode,
 } from "lucide";
 import {
@@ -54,6 +56,7 @@ import {
   runApprovalTurn,
   sharedContextLabel,
   TAIL_TURNS,
+  updateSession,
   type ApprovalDecision,
   type AssistantWork,
   type CoreSession,
@@ -121,6 +124,8 @@ const settledRowCache = new WeakMap<object, SettledRowKey>();
 const connectedConnectors = new Set<string>();
 const redrawHooks = new Set<() => void>();
 let proactiveOpenerStarted = false;
+let tagDialogOpen = false;
+let tagDraft = "";
 
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -1024,6 +1029,7 @@ export function createChatSurface(
                 </div>`
               : nothing
           }
+          ${opChatTopbar()}
           ${contextBanner()}
           ${
             glanceTier
@@ -1039,6 +1045,7 @@ export function createChatSurface(
           <div class="chat-bottom-dock">
             ${backgroundActivityStrip()} ${liveWorkDock(agent)} ${ctx.composer.composerForm(agent)}
           </div>
+          ${tagDialogTpl()}
         </div>
       `,
       chatState.host,
@@ -1127,6 +1134,113 @@ export function createChatSurface(
           </button>
         </div>
       </header>
+    `;
+  }
+
+  // ── OpenPilot 顶部栏 + 标签 ──
+
+  function currentSessionTags(): string[] {
+    const s = sessionsState.list.find((x) => x.id === chatState.sessionId);
+    return s?.tags ?? [];
+  }
+
+  function currentSessionTitle(): string {
+    const s = sessionsState.list.find((x) => x.id === chatState.sessionId);
+    return s?.title ?? "";
+  }
+
+  function opChatTopbar(): TemplateResult {
+    const tags = currentSessionTags();
+    return html`
+      <header class="chat-topbar op-topbar">
+        <div class="chat-heading">
+          <div class="chat-title">${currentSessionTitle()}</div>
+        </div>
+        <div class="topbar-actions op-tags">
+          <button class="op-tag-add" type="button" @click=${openTagDialog}>${icon(Tag, 14)}<span>+标签</span></button>
+          ${
+            tags.map(
+              (tag) => html`<span class="op-tag">${tag}<button
+                  class="op-tag-x"
+                  type="button"
+                  aria-label="移除标签 ${tag}"
+                  @click=${() => void removeTag(tag)}
+                >${icon(X, 11)}</button></span>`,
+            )
+          }
+        </div>
+      </header>
+    `;
+  }
+
+  async function persistTags(sessionId: string, tags: string[]): Promise<void> {
+    sessionsState.list = sessionsState.list.map((s) => (s.id === sessionId ? { ...s, tags } : s));
+    try {
+      await updateSession(sessionId, { tags });
+    } catch {
+      void 0;
+    }
+    drawActiveChat();
+  }
+
+  function openTagDialog(): void {
+    tagDraft = "";
+    tagDialogOpen = true;
+    drawActiveChat();
+  }
+
+  function closeTagDialog(): void {
+    if (!tagDialogOpen) return;
+    tagDialogOpen = false;
+    drawActiveChat();
+  }
+
+  async function saveTag(): Promise<void> {
+    const tag = tagDraft.trim();
+    if (!tag || !chatState.sessionId) return;
+    const tags = [...new Set([...currentSessionTags(), tag])];
+    tagDialogOpen = false;
+    await persistTags(chatState.sessionId, tags);
+  }
+
+  async function removeTag(tag: string): Promise<void> {
+    if (!chatState.sessionId) return;
+    const tags = currentSessionTags().filter((x) => x !== tag);
+    await persistTags(chatState.sessionId, tags);
+  }
+
+  function tagDialogTpl(): TemplateResult | typeof nothing {
+    if (!tagDialogOpen) return nothing;
+    return html`
+      <div class="op-dialog-overlay" @click=${closeTagDialog}>
+        <div class="op-dialog" role="dialog" aria-modal="true" @click=${(e: Event) => e.stopPropagation()}>
+          <h3>编辑标签</h3>
+          <input
+            class="op-tag-input"
+            placeholder="添加标签..."
+            .value=${tagDraft}
+            autofocus
+            @input=${(e: InputEvent) => {
+              tagDraft = (e.currentTarget as HTMLInputElement).value;
+              drawActiveChat();
+            }}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void saveTag();
+              } else if (e.key === "Escape") {
+                closeTagDialog();
+              }
+            }}
+          />
+          <div class="op-dialog-actions">
+            <button class="op-btn op-btn-gray" type="button" @click=${closeTagDialog}>取消</button>
+            <button class="op-btn op-btn-primary" type="button" ?disabled=${!tagDraft.trim()} @click=${() => void saveTag()}>
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
     `;
   }
 

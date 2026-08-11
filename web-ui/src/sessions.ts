@@ -1129,7 +1129,7 @@ async function refreshSessionTitle(s: CoreSession): Promise<void> {
 
 async function persistSessionPatch(
   id: string,
-  patch: { title?: string | null; archived?: boolean; pinned?: boolean; color?: string | null },
+  patch: { title?: string | null; archived?: boolean; pinned?: boolean; color?: string | null; tags?: string[] },
 ): Promise<void> {
   sessionsState.list = sessionsState.list.map((s) => (s.id === id ? { ...s, ...patch } : s));
   renderList();

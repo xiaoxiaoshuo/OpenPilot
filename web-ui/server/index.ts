@@ -1190,18 +1190,33 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
 
     if (method === "POST" && path.startsWith("/api/sessions/")) {
       const id = decodeURIComponent(path.slice("/api/sessions/".length));
-      const patch: { title?: string | null; archived?: boolean; pinned?: boolean; color?: string | null } = {};
+      const patch: {
+        title?: string | null;
+        archived?: boolean;
+        pinned?: boolean;
+        color?: string | null;
+        tags?: string[];
+      } = {};
       try {
         const p = JSON.parse(await readBody(req)) as {
           title?: unknown;
           archived?: unknown;
           pinned?: unknown;
           color?: unknown;
+          tags?: unknown;
         };
         if (p.title === null || typeof p.title === "string") patch.title = p.title as string | null;
         if (typeof p.archived === "boolean") patch.archived = p.archived;
         if (typeof p.pinned === "boolean") patch.pinned = p.pinned;
         if (p.color === null || typeof p.color === "string") patch.color = p.color as string | null;
+        if (Array.isArray(p.tags)) {
+          const tags = p.tags
+            .filter((x): x is string => typeof x === "string")
+            .map((x) => x.trim())
+            .filter(Boolean)
+            .slice(0, 20);
+          patch.tags = [...new Set(tags)];
+        }
       } catch (e) {
         if (e instanceof PayloadTooLargeError) throw e;
         return json(res, 400, { error: "bad_request" });
@@ -1210,9 +1225,10 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
         patch.title === undefined &&
         patch.archived === undefined &&
         patch.pinned === undefined &&
-        patch.color === undefined
+        patch.color === undefined &&
+        patch.tags === undefined
       ) {
-        return json(res, 400, { error: "bad_request", message: "title, archived, pinned, or color required" });
+        return json(res, 400, { error: "bad_request", message: "title, archived, pinned, color, or tags required" });
       }
       const r = await coreFetch(
         "POST",

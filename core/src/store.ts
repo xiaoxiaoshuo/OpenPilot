@@ -25,6 +25,11 @@ export interface StoredSession {
   messages: number;
   turns: number;
   entries: Entry[];
+  /** 会话标签（多个） */
+  tags?: string[];
+  archived?: boolean;
+  pinned?: boolean;
+  color?: string | null;
 }
 
 export interface StoredProject {
