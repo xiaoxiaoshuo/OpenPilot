@@ -242,8 +242,8 @@ function impersonationBanner(by: string) {
 function devBanner(user: string) {
   return html`
     <div class="top-banner dev" role="status">
-      <span><b>Dev mode</b> — no identity provider, signed in as ${user}</span>
-      <button class="top-banner-action" type="button" @click=${signOut}>Sign out</button>
+      <span><b>${t("auth.devMode")}</b>${t("auth.devBannerSuffix", { user })}</span>
+      <button class="top-banner-action" type="button" @click=${signOut}>${t("auth.signOut")}</button>
     </div>
   `;
 }
@@ -295,32 +295,29 @@ function clearPortalAttempt(): void {
 function portalGate() {
   if (portalAttemptedRecently())
     return gateShell(html`
-      <h1>Sign in through the portal</h1>
-      <p class="signin-body">
-        This surface is reached through the portal, and signing in there didn't produce a session for it. Open the
-        portal address directly rather than this one.
-      </p>
+      <h1>${t("auth.portalTitle")}</h1>
+      <p class="signin-body">${t("auth.portalBody")}</p>
       <div class="hint">
-        If you opened this surface's own address, that's the cause — it can't authenticate anyone on its own.
+        ${t("auth.portalHint")}
       </div>
     `);
   return gateShell(html`
-    <h1>Your session ended</h1>
-    <p class="signin-body">You've been signed out. Sign in again and you'll come back to this page.</p>
-    <button class="btn primary" type="button" @click=${signInWithPortal}>Sign in</button>
+    <h1>${t("auth.sessionEnded")}</h1>
+    <p class="signin-body">${t("auth.sessionEndedBody")}</p>
+    <button class="btn primary" type="button" @click=${signInWithPortal}>${t("auth.signIn")}</button>
   `);
 }
 
 function deniedGate() {
   return gateShell(html`
-    <h1>You don't have access</h1>
+    <h1>${t("auth.deniedTitle")}</h1>
     <p class="signin-body">
-      Your account is signed in and verified — it just isn't allowed on this instance. Ask an administrator to add you.
+      ${t("auth.deniedBody")}
     </p>
-    <button class="btn" type="button" @click=${signOut}>Sign out</button>
+    <button class="btn" type="button" @click=${signOut}>${t("auth.signOut")}</button>
     ${
       authMode === "dev"
-        ? html`<div class="hint">This instance lists its principals in <b>WEB_UI_PRINCIPALS</b>.</div>`
+        ? html`<div class="hint">${t("auth.deniedHint")}</div>`
         : nothing
     }
   `);
@@ -332,10 +329,10 @@ function retryBoot(): void {
 
 function unreachableGate() {
   return gateShell(html`
-    <h1>We couldn't reach the assistant</h1>
-    <p class="signin-body">The service didn't respond. This is usually temporary.</p>
-    <button class="btn primary" type="button" @click=${retryBoot}>Try again</button>
-    <div class="hint">If this keeps happening, the core service may be down.</div>
+    <h1>${t("auth.unreachableTitle")}</h1>
+    <p class="signin-body">${t("auth.unreachableBody")}</p>
+    <button class="btn primary" type="button" @click=${retryBoot}>${t("auth.tryAgain")}</button>
+    <div class="hint">${t("auth.unreachableHint")}</div>
   `);
 }
 
@@ -344,7 +341,7 @@ async function submitDevSignin(user: string): Promise<void> {
   try {
     await api("/signin", { method: "POST", body: JSON.stringify({ user }) });
   } catch (err) {
-    renderAuthGate({ kind: "dev", value: user, error: errMessage(err, "Sign-in failed.") });
+    renderAuthGate({ kind: "dev", value: user, error: errMessage(err, t("auth.signInFailed")) });
     return;
   }
   await bootSafely();
@@ -361,12 +358,9 @@ function devGate(gate: { value?: string; error?: string; pending?: boolean }) {
         if (user) void submitDevSignin(user);
       }}
     >
-      <h1>Dev sign-in</h1>
-      <p class="signin-body">
-        No identity provider is configured, so this instance trusts a local cookie. Set
-        <b>CORE_SIGNING_SECRET</b> and run the portal to use real sign-in.
-      </p>
-      <label for="dev-principal">Principal</label>
+      <h1>${t("auth.devSignIn")}</h1>
+      <p class="signin-body">${t("auth.devBody")}</p>
+      <label for="dev-principal">${t("auth.principal")}</label>
       <input
         id="dev-principal"
         name="principal"
@@ -376,12 +370,12 @@ function devGate(gate: { value?: string; error?: string; pending?: boolean }) {
         spellcheck="false"
         required
         autofocus
-        placeholder="you@org.com"
+        placeholder=${t("auth.principalPlaceholder")}
         .value=${gate.value ?? ""}
         ?disabled=${gate.pending === true}
       />
       <button class="btn primary" type="submit" ?disabled=${gate.pending === true}>
-        ${gate.pending ? "Signing in…" : "Continue"}
+        ${gate.pending ? t("auth.signingIn") : t("auth.continue")}
       </button>
       ${gate.error ? html`<div class="hint error" role="alert">${gate.error}</div>` : nothing}
     </form>
