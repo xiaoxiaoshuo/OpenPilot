@@ -85,6 +85,43 @@ OpenPilot Chat 是一个简化版在线聊天应用，支持多用户认证、�
 
 ---
 
+## 端口分配
+
+### OpenPilot 服务（当前）
+
+| 端口 | 服务 | 说明 |
+|---|---|---|
+| `8097` | gateway | 统一入口 / OIDC Client / 反代 |
+| `8099` | IdP | 身份提供方（GitHub / Google） |
+| `8196` | web-ui | Lit 前端 + 服务端代理 |
+
+> ⚠️ `8097` 与原 QM 项目的 portal 端口相同。**当前原 QM portal 未运行**，因此不冲突；
+> 若日后需要 QM portal 与 OpenPilot gateway 同时运行，请给 gateway 换端口（改 `PORT` / `GATEWAY_PUBLIC_URL`）。
+
+### 原 QM 项目端口（保持不变，未动）
+
+| 端口 | 服务 | 说明 |
+|---|---|---|
+| `8080` | Core | Fastify 主 API（业务） |
+| `8090` | Admin | 服务端渲染管理台 |
+| `8096` | Web UI | 前端（被 OpenPilot web-ui 占用前保留） |
+| `8097` | Portal | 网关（**未运行**，端口现由 OpenPilot gateway 使用） |
+
+### 启动 OpenPilot（开发）
+
+```bash
+# 1. IdP（:8099）
+cd IdP && npm install && npm run dev
+
+# 2. gateway（:8097）
+cd gateway && npm install && npm run dev
+
+# 3. web-ui（:8196）
+cd web-ui && npm install && npm run serve   # 或 npm run dev（Vite HMR）
+```
+
+---
+
 ## 架构总览
 
 ```text
