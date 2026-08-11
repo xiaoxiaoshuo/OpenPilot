@@ -106,3 +106,30 @@ Portal :8097（网关 / OIDC Client）
 ## 核心设计哲学
 
 > 后端：Fastify（Core）+ 原生 http（插件层）+ `pg` 手写 SQL + jsonb 通用表，无 ORM；前端：Lit Web Components + Vite，不用 React/Vue；整体少依赖、手写可控、模块自包含，注重健壮性与数据隔离。
+
+
+---
+
+## 参考项目：yc-software/qm
+
+> 参考仓库：https://github.com/yc-software/qm —— 一个多人在线 agent 工作平台（multiplayer agent harness for work）。OpenPilot Chat 的架构理念与设计取舍参考自此项目。
+
+### qm 项目重点（提炼）
+
+- **定位**：面向团队的多智能体工作平台。每个员工拥有独立隔离的工作区（workspace），互不影响；同时可在频道、群组消息、项目中与 agent 协作。
+- **Scope 隔离模型**：每个人、每个房间拥有独立的 memory、文件、keychain、权限、cron、Web 应用与持久化沙箱——数据隔离是一等公民。
+- **核心架构**：无头核心（API · 身份 · 策略 · 调度）+ Agent Loop（Pi / OpenCode / Codex / Claude Code 可切换 harness）+ 每 Scope 独立沙箱；Postgres 持久化会话、记忆与队列。
+- **技术栈**：TypeScript on Node + Fastify（HTTP 核心）；Web UI 用 Vite + Lit；Slack 插件用 Bolt。
+- **安全姿态**：Strict（所有工具调用人工审批）/ Auto（默认，内容分类器筛查）/ Dangerous（无筛查无暂停）三档，叠加预声明命令策略（递归删除、破坏性 SQL 等硬拒绝）。
+- **部署模式**：deployment directory——core 保持通用，组织特定配置集中在部署目录，由 CLI 校验并部署；支持私有 fork，用 update-qm / upstream-pr 双技能维护上游边界。
+
+### 对 OpenPilot Chat 的借鉴
+
+| qm 的设计 | OpenPilot Chat 对应实现 |
+|---|---|
+| Scope 隔离（数据隔离一等公民） | 全部多租户查询强制 scope 条件（见 docs/PROJECT_PLAN.md §4.3） |
+| 无头核心 + HTTP API | Core :8080（Fastify 5 主 API） |
+| Postgres 持久化（会话/记忆/队列） | PostgreSQL + pg-boss 任务队列 |
+| Web UI：Vite + Lit | Web UI :8096（Vite 5 + Lit 3） |
+| 身份与权限 | OIDC + session cookie + ACL（见 docs/login/AUTHENTICATION.md） |
+| 多 harness / 多模型可切换 | LLM Provider 抽象（DeepSeek 默认，可换 Claude / Codex） |
