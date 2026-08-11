@@ -34,6 +34,11 @@ const zh: Record<string, string> = {
   "sessions.active": "进行中",
   "sessions.waiting": "等待中",
   "sessions.archived": "已归档",
+  "sessions.today": "今天",
+  "sessions.yesterday": "昨天",
+  "sessions.prev7": "最近 7 天",
+  "sessions.prev30": "最近 30 天",
+  "sessions.older": "更早",
 
   // 定时任务页
   "crons.title": "定时任务",
@@ -125,6 +130,11 @@ const en: Record<string, string> = {
   "sessions.active": "Active",
   "sessions.waiting": "Waiting",
   "sessions.archived": "Archived",
+  "sessions.today": "Today",
+  "sessions.yesterday": "Yesterday",
+  "sessions.prev7": "Previous 7 days",
+  "sessions.prev30": "Previous 30 days",
+  "sessions.older": "Older",
 
   "crons.title": "Crons",
   "crons.yours": "Yours",
