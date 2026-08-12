@@ -39,7 +39,6 @@ import type { CronView } from "./crons";
 import { cronRunSummary, cronRunSummaryTitle, cronScheduleSummary } from "./cron-format";
 import { restoreDialogFocus } from "./dialog-focus";
 import { ambientPolicySection, loadAmbientPolicy, resetAmbientPolicy } from "./ambient-policy";
-import { contextModelSection, loadContextModel, resetContextModel } from "./context-model";
 
 interface ScopeFile {
   id: string;
@@ -182,7 +181,6 @@ export async function renderContexts(): Promise<void> {
   ) {
     void loadScopeResources(contextsState.selected);
     void loadAmbientPolicy(contextsState.selected, drawContexts);
-    void loadContextModel(contextsState.selected, drawContexts);
   }
   drawContexts();
 }
@@ -481,8 +479,7 @@ function detailTpl(c: CoreContext): TemplateResult {
           }
         </div>
         <aside class="context-settings" aria-label=${c.project ? t("contexts.projectSettings") : t("contexts.contextSettings")}>
-          ${c.project ? projectMembersSection(c) : nothing} ${contextModelSection(c.scopeId)}
-          ${ambientPolicySection(c.scopeId)}
+          ${c.project ? projectMembersSection(c) : nothing} ${ambientPolicySection(c.scopeId)}
         </aside>
       </div>
     </div>
@@ -1204,13 +1201,11 @@ function selectContext(scopeId: string | null): void {
   contextsState.resourcesNotice = "";
   contextsState.resourcesLoading = false;
   resetAmbientPolicy();
-  resetContextModel();
   syncUrlFromState();
   drawContexts();
   if (scopeId) {
     void loadScopeResources(scopeId);
     void loadAmbientPolicy(scopeId, drawContexts);
-    void loadContextModel(scopeId, drawContexts);
   }
 }
 
