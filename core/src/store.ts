@@ -39,6 +39,15 @@ export interface StoredProject {
   memberIds: string[];
   createdAt: number;
   updatedAt: number;
+  /** 群组机器人配置（群组=项目；改一处全组会话即时生效） */
+  botConfig?: BotGroupConfig;
+}
+
+export interface BotGroupConfig {
+  /** 主 agent 显示名，默认“群助手” */
+  primaryName?: string;
+  /** 附加机器人（预设 botId + 群组内启停） */
+  attached: Array<{ botId: string; enabled: boolean }>;
 }
 
 export interface ScopePolicy {
@@ -154,6 +163,13 @@ export function createStore(dataDir: string) {
       mutate(() => {
         const p = db.projects[id];
         if (p) p.memberIds = p.memberIds.filter((m) => m !== memberId);
+      });
+    },
+    /** 更新群组机器人配置——不 bump updatedAt（避免 roster 版本拒绝语义） */
+    setBotConfig(id: string, config: BotGroupConfig): void {
+      mutate(() => {
+        const p = db.projects[id];
+        if (p) p.botConfig = config;
       });
     },
 

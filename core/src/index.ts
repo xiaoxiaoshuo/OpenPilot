@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { json, readBody } from "../chassis/src/http.ts";
 import { verifyPortalIdentity, PORTAL_IDENTITY_HEADER } from "../chassis/src/portal-identity.ts";
 import { createStore, type Entry, type StoredProject, type StoredSession } from "./store.ts";
-import { completeChat } from "./ai.ts";
+import { completeChat, type ChatTool, type CompleteChatResult, type ToolCall } from "./ai.ts";
+import { BOT_PROFILES, botProfileById, enabledProfiles, type BotProfile } from "./bots/profiles.ts";
 
 // ───────────────────────── 配置 ─────────────────────────
 
@@ -103,6 +104,11 @@ function isProjectScope(scopeId: string): boolean {
 function projectIdFromScope(scopeId: string): string | null {
   if (!isProjectScope(scopeId)) return null;
   return scopeId.slice("group:web-project-".length);
+}
+
+function projectForScope(scopeId: string): StoredProject | null {
+  if (!isProjectScope(scopeId)) return null;
+  return store.getProject(projectIdFromScope(scopeId)!);
 }
 
 function principalCanAccessScope(principal: string, scopeId: string): boolean {
@@ -213,6 +219,83 @@ function runResult(run: Run): Record<string, unknown> {
     sessionId: run.sessionId,
     threadRef: run.threadRef,
   };
+}
+
+// ───────────────────────── 群组机器人（主 agent 协调者模式）─────────────────────────
+
+const DEFAULT_PRIMARY_NAME = "群助手";
+const MAX_SUMMON_PER_TURN = 2;
+
+/** summon_bot 工具定义（OpenAI 兼容，DeepSeek function calling） */
+const summonBotTool: ChatTool = {
+  type: "function",
+  function: {
+    name: "summon_bot",
+    description:
+      "召唤一个群组附加机器人补充回答。仅在用户问题对应某机器人专长、或需要多角度回答时调用（一次最多 2 个，每个 bot 一次）。主回答始终由你完成。",
+    parameters: {
+      type: "object",
+      properties: {
+        bot_id: {
+          type: "string",
+          description: "要召唤的附加机器人 botId",
+        },
+      },
+      required: ["bot_id"],
+    },
+  },
+};
+
+/** 群组启用状态：项目有 botConfig 且 attached 中 enabled 的附加机器人 */
+function enabledBotsForSession(session: StoredSession): BotProfile[] {
+  const project = projectForScope(session.scopeId);
+  if (!project?.botConfig) return [];
+  return project.botConfig.attached
+    .filter((a) => a.enabled)
+    .map((a) => botProfileById(a.botId))
+    .filter((b): b is BotProfile => Boolean(b));
+}
+
+/** 群组主 agent 显示名（默认群助手） */
+function primaryNameFor(session: StoredSession): string {
+  const project = projectForScope(session.scopeId);
+  return project?.botConfig?.primaryName?.trim() || DEFAULT_PRIMARY_NAME;
+}
+
+/** 群组协作块：渲染 enabled 机器人的能力/性格（配置变了提示词跟着变） */
+function groupCoordinationSystem(bots: BotProfile[]): string {
+  const roster = bots
+    .map((b) => `- ${b.avatar} ${b.name}（${b.botId}）：${b.capabilities}；性格：${b.personality.split("。")[0]}`)
+    .join("\n");
+  return [
+    "",
+    "## 群组机器人协作",
+    "本群组配置了以下机器人助手，你可以调用 summon_bot 工具请它们补充回答：",
+    roster,
+    "",
+    "规则：",
+    "- 用户问题对应某机器人的专长、或需要多角度回答时，调用 summon_bot（可一次多个）",
+    "- 主回答始终由你完成，不要用 summon 代替你自己的回答",
+    "- 宁缺毋滥：用户只是表达感谢、确认、闲聊，或问题你已经能完整回答时，绝不 summon",
+    "- 不要为了展示功能而召唤机器人",
+  ].join("\n");
+}
+
+// ── 会话级写锁（主 agent 与附加机器人并发写同一会话时串行化）──
+const sessionLocks = new Map<string, Promise<void>>();
+async function withSessionLock(sessionId: string, fn: () => Promise<void>): Promise<void> {
+  const prev = sessionLocks.get(sessionId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const next = prev.then(() => gate);
+  sessionLocks.set(sessionId, next);
+  await prev.catch(() => {});
+  try {
+    await fn();
+  } finally {
+    release();
+    if (sessionLocks.get(sessionId) === next) sessionLocks.delete(sessionId);
+  }
 }
 
 // ───────────────────────── 会话助手 ─────────────────────────
@@ -692,6 +775,67 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return send(res, 201, { project: projectView(project) });
   }
 
+  // ── 机器人预设列表（对齐 /api/bot-profiles）──
+  if (method === "GET" && path === "/v1/bot-profiles") {
+    return send(res, 200, {
+      profiles: enabledProfiles().map((p) => ({
+        botId: p.botId,
+        name: p.name,
+        avatar: p.avatar,
+        personality: p.personality,
+        capabilities: p.capabilities,
+      })),
+    });
+  }
+
+  // ── 群组机器人配置：GET（成员读）/ PATCH（owner 改）──
+  const botsMatch = path.match(/^\/v1\/projects\/([^/]+)\/bots$/);
+  if (method === "GET" && botsMatch) {
+    const id = decodeURIComponent(botsMatch[1]!);
+    const p = store.getProject(id);
+    if (!p) return send(res, 404, { error: "not_found" });
+    if (!p.memberIds.includes(principal)) return send(res, 404, { error: "not_found" });
+    const config = p.botConfig ?? { primaryName: DEFAULT_PRIMARY_NAME, attached: [] };
+    return send(res, 200, { config, profiles: enabledProfiles() });
+  }
+
+  if (method === "PATCH" && botsMatch) {
+    const id = decodeURIComponent(botsMatch[1]!);
+    const p = store.getProject(id);
+    if (!p) return send(res, 404, { error: "not_found" });
+    if (p.ownerId !== principal) return send(res, 403, { error: "forbidden", message: "only the owner can change bots" });
+    let body: Record<string, unknown> = {};
+    try {
+      body = JSON.parse(await readBody(req, 100_000)) as Record<string, unknown>;
+    } catch {
+      return send(res, 400, { error: "bad_request" });
+    }
+    const prev = p.botConfig ?? { primaryName: DEFAULT_PRIMARY_NAME, attached: [] as Array<{ botId: string; enabled: boolean }> };
+    const config = { ...prev, attached: [...prev.attached] };
+    if (body.primaryName !== undefined) {
+      const name = typeof body.primaryName === "string" ? body.primaryName.trim().slice(0, 30) : "";
+      if (!name) return send(res, 400, { error: "bad_request", message: "primaryName required" });
+      config.primaryName = name;
+    }
+    if (Array.isArray(body.attached)) {
+      const seen = new Set<string>();
+      const attached: Array<{ botId: string; enabled: boolean }> = [];
+      for (const raw of body.attached as unknown[]) {
+        if (!raw || typeof raw !== "object") continue;
+        const a = raw as { botId?: unknown; enabled?: unknown };
+        const botId = typeof a.botId === "string" ? a.botId.trim() : "";
+        if (!botId || seen.has(botId)) continue;
+        if (!botProfileById(botId)) continue;
+        seen.add(botId);
+        attached.push({ botId, enabled: a.enabled !== false });
+        if (attached.length >= 10) break;
+      }
+      config.attached = attached;
+    }
+    store.setBotConfig(id, config);
+    return send(res, 200, { config, profiles: enabledProfiles() });
+  }
+
   // ── 项目：重命名 / 加成员 / 移除成员 ──
   const projectIdMatch = path.match(/^\/v1\/projects\/([^/]+)$/);
   if (method === "PATCH" && projectIdMatch) {
@@ -933,10 +1077,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
 // ───────────────────────── AI 回复 ─────────────────────────
 
+/** 主 agent 协调者：群组时注入协作块 + summon 工具，回复带身份，turn 结束后 fan-out */
 async function runAssistant(session: StoredSession, run: Run, model: string): Promise<void> {
   // abort 预检（信号可能已在 enqueue 后到达）
   const signals = runSignals.get(run.id) ?? [];
-  if (run.abortRequested || signals.some((s) => s.kind === "abort")) {
+  const aborted = () => run.abortRequested || signals.some((s) => s.kind === "abort");
+  if (aborted()) {
     run.status = "failed";
     run.finishedAt = Date.now();
     run.error = "aborted";
@@ -944,23 +1090,29 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
     enqueueDelivery(session.threadRef);
     return;
   }
+
+  const isGroup = isProjectScope(session.scopeId);
+  const groupBots = isGroup ? enabledBotsForSession(session) : [];
   const userEntries = session.entries.filter((e) => e.type === "user");
   const messages = userEntries.map((e) => {
     const text = (e.payload as { text?: string })?.text ?? "";
     return { role: "user" as const, content: text };
   });
+  const baseSystem =
+    "You are the OpenPilot assistant, a helpful AI teammate inside the OpenPilot Chat platform. " +
+    "Respond concisely in the user's language.";
+  const system = groupBots.length ? baseSystem + groupCoordinationSystem(groupBots) : baseSystem;
+  const tools = groupBots.length ? [summonBotTool] : undefined;
+
   let text: string;
+  let toolCalls: ToolCall[] | undefined;
   try {
-    text = await completeChat({
-      model,
-      system:
-        "You are the OpenPilot assistant, a helpful AI teammate inside the OpenPilot Chat platform. " +
-        "Respond concisely in the user's language.",
-      messages,
-    });
+    const result = await completeChat({ model, system, messages, tools });
+    text = typeof result === "string" ? result : result.text;
+    toolCalls = typeof result === "string" ? undefined : result.toolCalls;
   } catch (e) {
     // abort 期间的结果丢弃（qm userAborted 语义）
-    if (run.abortRequested || (runSignals.get(run.id) ?? []).some((s) => s.kind === "abort")) {
+    if (aborted()) {
       run.status = "failed";
       run.finishedAt = Date.now();
       run.error = "aborted";
@@ -971,21 +1123,23 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
     run.status = "failed";
     run.finishedAt = Date.now();
     run.error = e instanceof Error ? e.message : "assistant failed";
-    const errorEntry: Entry = {
-      seq: session.entries.length + 1,
-      parentSeq: null,
-      type: "assistant",
-      payload: { text: `⚠️ AI 回复失败：${run.error}` },
-      createdAt: Date.now(),
-    };
-    session.entries.push(errorEntry);
-    store.patchSession(session.id, { entries: session.entries, messages: session.messages + 1 });
+    await withSessionLock(session.id, async () => {
+      const errorEntry: Entry = {
+        seq: session.entries.length + 1,
+        parentSeq: null,
+        type: "assistant",
+        payload: { text: `⚠️ AI 回复失败：${run.error}` },
+        createdAt: Date.now(),
+      };
+      session.entries.push(errorEntry);
+      store.patchSession(session.id, { entries: session.entries, messages: session.messages + 1 });
+    });
     pushSessionState(session.threadRef, session.id, "idle", Date.now());
     enqueueDelivery(session.threadRef);
     return;
   }
   // 回复完成后仍被 abort：丢弃结果（qm：abort 落在生成完成后不落库）
-  if (run.abortRequested || (runSignals.get(run.id) ?? []).some((s) => s.kind === "abort")) {
+  if (aborted()) {
     run.status = "failed";
     run.finishedAt = Date.now();
     run.error = "aborted";
@@ -994,17 +1148,122 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
     return;
   }
   const at = Date.now();
-  session.entries.push({
-    seq: session.entries.length + 1,
-    parentSeq: null,
-    type: "assistant",
-    payload: { text },
-    createdAt: at,
+  await withSessionLock(session.id, async () => {
+    const payload: Record<string, unknown> = { text };
+    if (isGroup) payload.author = primaryNameFor(session);
+    session.entries.push({
+      seq: session.entries.length + 1,
+      parentSeq: null,
+      type: "assistant",
+      payload,
+      createdAt: at,
+    });
+    session.messages += 1;
+    session.lastActivityAt = at;
+    store.patchSession(session.id, {
+      entries: session.entries,
+      messages: session.messages,
+      lastActivityAt: at,
+    });
   });
-  store.patchSession(session.id, {
-    entries: session.entries,
-    messages: session.messages + 1,
-    lastActivityAt: at,
+  run.status = "done";
+  run.finishedAt = at;
+  run.partial = text;
+  pushSessionState(session.threadRef, session.id, "idle", at);
+  enqueueDelivery(session.threadRef);
+
+  // turn 结束后统一解析 summon（fan-out 附加机器人；失败静默不阻塞）
+  if (groupBots.length) resolveSummons(session, toolCalls, model);
+}
+
+/** 解析主 agent 的 summon_bot 调用：去重 / 校验启用 / 上限 2，逐个入队 bot run */
+function resolveSummons(session: StoredSession, toolCalls: ToolCall[] | undefined, model: string): void {
+  if (!toolCalls?.length) return;
+  const enabled = enabledBotsForSession(session);
+  const seen = new Set<string>();
+  const picked: BotProfile[] = [];
+  for (const tc of toolCalls) {
+    if (tc.function.name !== "summon_bot") continue;
+    let args: { bot_id?: string } = {};
+    try {
+      args = JSON.parse(tc.function.arguments ?? "{}") as { bot_id?: string };
+    } catch {
+      continue;
+    }
+    const botId = args.bot_id?.trim();
+    if (!botId || seen.has(botId)) continue;
+    const profile = enabled.find((b) => b.botId === botId);
+    if (!profile) continue;
+    seen.add(botId);
+    picked.push(profile);
+    if (picked.length >= MAX_SUMMON_PER_TURN) break;
+  }
+  for (const profile of picked) {
+    void runBot(session, profile, model).catch((e) => console.error(`[core] bot run ${profile.botId} failed:`, e));
+  }
+}
+
+/** 附加机器人 run：automation 语义（不触发新 turn → 防循环主线）；回复带 author=机器人名 */
+async function runBot(session: StoredSession, profile: BotProfile, model: string): Promise<void> {
+  const at0 = Date.now();
+  const run: Run = {
+    id: randomUUID(),
+    sessionId: session.id,
+    threadRef: session.threadRef,
+    status: "working",
+    startedAt: at0,
+  };
+  runs.set(run.id, run);
+  runsBySession.set(session.id, [...(runsBySession.get(session.id) ?? []), run.id]);
+  pushSessionState(session.threadRef, session.id, "working", at0);
+
+  // 上下文：同一会话最近条目（与主 agent 看到的一致），只取 user/assistant 文本
+  const history = session.entries
+    .slice(-16)
+    .filter((e) => e.type === "user" || e.type === "assistant")
+    .map((e) => {
+      const payload = e.payload as { text?: string };
+      return {
+        role: (e.type === "user" ? "user" : "assistant") as "user" | "assistant",
+        content: payload.text ?? "",
+      };
+    });
+  let text: string;
+  try {
+    const result = await completeChat({
+      model,
+      system:
+        profile.personality +
+        "\n\n你是被群助手召唤来回答的用户问题。基于本会话上下文回答，风格遵循你的角色设定。不要回复或评价其他机器人的发言。",
+      messages: history,
+    });
+    text = typeof result === "string" ? result : result.text;
+  } catch (e) {
+    run.status = "failed";
+    run.finishedAt = Date.now();
+    run.error = e instanceof Error ? e.message : "bot failed";
+    pushSessionState(session.threadRef, session.id, "idle", Date.now());
+    enqueueDelivery(session.threadRef);
+    return;
+  }
+  const at = Date.now();
+  await withSessionLock(session.id, async () => {
+    session.entries.push({
+      seq: session.entries.length + 1,
+      parentSeq: null,
+      type: "assistant",
+      payload: { text, author: profile.name, bot: profile.botId },
+      createdAt: at,
+    });
+    session.messages += 1;
+    session.turns += 1;
+    session.lastActivityAt = at;
+    store.patchSession(session.id, {
+      entries: session.entries,
+      messages: session.messages,
+      turns: session.turns,
+      lastActivityAt: at,
+    });
   });
   run.status = "done";
   run.finishedAt = at;

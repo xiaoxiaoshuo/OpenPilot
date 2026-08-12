@@ -838,6 +838,34 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       return relay(res, r);
     }
 
+    if (method === "GET" && path === "/api/bot-profiles") {
+      const r = await coreFetch("GET", `/v1/bot-profiles?principalId=${encodeURIComponent(user)}`);
+      return relay(res, r);
+    }
+
+    const projectBots = path.match(/^\/api\/projects\/([^/]+)\/bots$/);
+    if (method === "GET" && projectBots) {
+      const id = decodeURIComponent(projectBots[1]!);
+      const r = await coreFetch("GET", `/v1/projects/${encodeURIComponent(id)}/bots?principalId=${encodeURIComponent(user)}`);
+      return relay(res, r);
+    }
+    if (method === "PATCH" && projectBots) {
+      const id = decodeURIComponent(projectBots[1]!);
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse((await readBody(req)) || "{}") as Record<string, unknown>;
+      } catch (e) {
+        if (e instanceof PayloadTooLargeError) throw e;
+        return json(res, 400, { error: "bad_request" });
+      }
+      const r = await coreFetch(
+        "PATCH",
+        `/v1/projects/${encodeURIComponent(id)}/bots?principalId=${encodeURIComponent(user)}`,
+        JSON.stringify(body),
+      );
+      return relay(res, r);
+    }
+
     if (method === "GET" && path === "/api/projects") {
       const r = await coreFetch("GET", `/v1/projects?principalId=${encodeURIComponent(user)}`);
       return relay(res, r);
