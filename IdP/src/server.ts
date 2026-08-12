@@ -159,7 +159,7 @@ export function createIdpHandler(deps: {
         identity = await googleExchangeCode(cfg, code, pendingReq.request.nonce);
       }
     } catch (e) {
-      console.error(`[idp] ${provider} exchange failed:`, e instanceof Error ? e.message : e);
+      console.error(`[idp] ${provider} exchange failed:`, e instanceof Error ? (e.stack ?? e.message) : e);
       return fail(`sign-in with ${provider} failed`);
     }
 
