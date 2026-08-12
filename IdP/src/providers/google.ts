@@ -49,8 +49,11 @@ export async function googleExchangeCode(
       grant_type: "authorization_code",
     }).toString(),
   });
-  if (!tokenRes.ok) throw new Error(`google token endpoint HTTP ${tokenRes.status}`);
   const body = (await tokenRes.json()) as GoogleTokenResponse;
+  if (!tokenRes.ok) {
+    const reason = body.error_description ?? body.error ?? "unspecified provider error";
+    throw new Error(`google token endpoint HTTP ${tokenRes.status}: ${reason}`);
+  }
   if (!body.id_token) {
     throw new Error(`google token exchange failed: ${body.error_description ?? body.error ?? "no id_token"}`);
   }
