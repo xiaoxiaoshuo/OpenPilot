@@ -246,11 +246,7 @@ function listContexts(principal: string): Array<Record<string, unknown>> {
       memberCount: p.memberIds.length,
       sessionCount: 0,
       lastActivityAt: null as number | null,
-      project: {
-        id: p.id,
-        name: p.name,
-        orgId: ORG,
-      },
+      project: projectView(p),
     }));
 
   // 灌计数：personal 第一，group 按 lastActivityAt 降序
