@@ -367,6 +367,10 @@ export function createChatSurface(
       scheduleStreamDraw(agent);
       if (agent === chatState.agent && (agent.state.isStreaming || e.type === "agent_end"))
         chatState.pendingSend = null;
+      if (e.type === "agent_end" && pendingDeliveryRefresh && agent === chatState.agent) {
+        pendingDeliveryRefresh = false;
+        void refreshTranscriptFromEntries(agent);
+      }
       if (e.type === "agent_end" && !detachedAgents.has(agent))
         sessionsState.list = clearWorking(sessionsState.list, threadRef);
       const working = agent.state.isStreaming || chatState.pendingSend !== null;
@@ -474,6 +478,7 @@ export function createChatSurface(
     );
   }
 
+  let pendingDeliveryRefresh = false;
   function onDelivery(threadRef: string): void {
     const ro = readOnlyView;
     if (ro && threadRef === ro.threadRef) {
@@ -495,7 +500,12 @@ export function createChatSurface(
       return;
     }
     const agent = chatState.agent;
-    if (!agent || threadRef !== chatState.threadRef || agent.state.isStreaming) return;
+    if (!agent || threadRef !== chatState.threadRef) return;
+    if (agent.state.isStreaming) {
+      // 流式期间（主 agent 还在回复）bot 回复的 delivery 先记下，agent_end 后补刷新
+      pendingDeliveryRefresh = true;
+      return;
+    }
     void refreshTranscriptFromEntries(agent);
   }
 
