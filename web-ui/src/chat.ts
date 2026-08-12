@@ -4,6 +4,7 @@ import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { UserMessageWithAttachments } from "@earendil-works/pi-web-ui";
 import "./marked-dedupe";
 import { restoreDialogFocus } from "./dialog-focus";
+import { t } from "./i18n";
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
 import "@mariozechner/mini-lit/dist/CodeBlock.js";
 import { html, nothing, render, type TemplateResult } from "lit";
@@ -1212,13 +1213,13 @@ export function createChatSurface(
   async function saveTag(): Promise<void> {
     const tag = tagDraft.trim();
     if (!tag) {
-      tagError = "Enter a tag name.";
+      tagError = t("tags.enterTagName");
       drawActiveChat();
       queueMicrotask(() => document.querySelector<HTMLInputElement>("#tag-name")?.focus());
       return;
     }
     if (!chatState.sessionId) {
-      tagError = "Start a conversation first.";
+      tagError = t("tags.startConversation");
       drawActiveChat();
       return;
     }
@@ -1247,19 +1248,19 @@ export function createChatSurface(
         <form @submit=${(event: SubmitEvent) => { event.preventDefault(); void saveTag(); }}>
           <div class="project-dialog-head">
             <span class="context-glyph large">${icon(Tag, 21)}</span>
-            <div><h2 id="tag-dialog-title">New tag</h2></div>
+            <div><h2 id="tag-dialog-title">${t("tags.newTag")}</h2></div>
             <button
               class="project-icon-button"
               type="button"
-              aria-label="Close new tag"
-              title="Close"
+              aria-label=${t("tags.closeNewTag")}
+              title=${t("common.close")}
               @click=${closeTagDialog}
             >
               ${icon(X, 16)}
             </button>
           </div>
           <label class="project-name-field" for="tag-name">
-            <span>Name</span>
+            <span>${t("contexts.name")}</span>
             <input
               id="tag-name"
               data-focus-key="tag-name"
@@ -1277,9 +1278,9 @@ export function createChatSurface(
           </label>
           <div class="form-error" aria-live="polite">${tagError}</div>
           <div class="project-dialog-actions">
-            <button class="btn" type="button" @click=${closeTagDialog}>Cancel</button>
+            <button class="btn" type="button" @click=${closeTagDialog}>${t("common.cancel")}</button>
             <button class="btn primary" type="submit" ?disabled=${!tagDraft.trim()}>
-              ${icon(Tag, 15)}<span>Create tag</span>
+              ${icon(Tag, 15)}<span>${t("tags.createTag")}</span>
             </button>
           </div>
         </form>
