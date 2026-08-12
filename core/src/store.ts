@@ -1,9 +1,9 @@
 /**
- * 最小存储 — JSON 文件持久化（sessions + entries + projects）
+ * 最小存储 — JSON 文件持久化（sessions + entries + projects + policies + runtime overrides）
  * 数据文件：core/data/db.json（原子写入）
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 export interface Entry {
   seq: number;
@@ -41,12 +41,28 @@ export interface StoredProject {
   updatedAt: number;
 }
 
+export interface ScopePolicy {
+  orders: string;
+  bots: Record<string, unknown>;
+  ambientEnabled: boolean | null;
+  updatedAt: number;
+}
+
+export interface RuntimeOverride {
+  harnessId: string;
+  modelId: string;
+  revision: number;
+  updatedAt: number;
+}
+
 interface Db {
   sessions: Record<string, StoredSession>;
   projects: Record<string, StoredProject>;
+  policies: Record<string, ScopePolicy>;
+  runtimeOverrides: Record<string, RuntimeOverride>;
 }
 
-const EMPTY: Db = { sessions: {}, projects: {} };
+const EMPTY: Db = { sessions: {}, projects: {}, policies: {}, runtimeOverrides: {} };
 
 export function createStore(dataDir: string) {
   const file = join(dataDir, "db.json");
@@ -61,6 +77,8 @@ export function createStore(dataDir: string) {
     db = {
       sessions: parsed.sessions ?? {},
       projects: parsed.projects ?? {},
+      policies: parsed.policies ?? {},
+      runtimeOverrides: parsed.runtimeOverrides ?? {},
     };
   } catch {
     db = { ...EMPTY };
@@ -89,6 +107,7 @@ export function createStore(dataDir: string) {
   }
 
   return {
+    // ── sessions ──
     getSession(id: string): StoredSession | null {
       return db.sessions[id] ?? null;
     },
@@ -106,12 +125,55 @@ export function createStore(dataDir: string) {
         if (s) Object.assign(s, patch);
       });
     },
+
+    // ── projects ──
     listProjects(): StoredProject[] {
-      return Object.values(db.projects);
+      return Object.values(db.projects).sort((a, b) => b.updatedAt - a.updatedAt);
+    },
+    getProject(id: string): StoredProject | null {
+      return db.projects[id] ?? null;
     },
     putProject(project: StoredProject): void {
       mutate(() => {
         db.projects[project.id] = project;
+      });
+    },
+    patchProject(id: string, patch: Partial<StoredProject>): void {
+      mutate(() => {
+        const p = db.projects[id];
+        if (p) Object.assign(p, patch);
+      });
+    },
+    addProjectMember(id: string, memberId: string): void {
+      mutate(() => {
+        const p = db.projects[id];
+        if (p && !p.memberIds.includes(memberId)) p.memberIds.push(memberId);
+      });
+    },
+    removeProjectMember(id: string, memberId: string): void {
+      mutate(() => {
+        const p = db.projects[id];
+        if (p) p.memberIds = p.memberIds.filter((m) => m !== memberId);
+      });
+    },
+
+    // ── ambient policy（scope → policy）──
+    getPolicy(scopeId: string): ScopePolicy | null {
+      return db.policies[scopeId] ?? null;
+    },
+    putPolicy(scopeId: string, policy: ScopePolicy): void {
+      mutate(() => {
+        db.policies[scopeId] = policy;
+      });
+    },
+
+    // ── runtime override（scope → selection）──
+    getRuntimeOverride(scopeId: string): RuntimeOverride | null {
+      return db.runtimeOverrides[scopeId] ?? null;
+    },
+    putRuntimeOverride(scopeId: string, override: RuntimeOverride): void {
+      mutate(() => {
+        db.runtimeOverrides[scopeId] = override;
       });
     },
   };

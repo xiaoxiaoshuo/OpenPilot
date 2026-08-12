@@ -4,3 +4,5 @@ node_modules/
 *.log
 .idp-jwk.json
 .env
+core/data/db.json
+backups/

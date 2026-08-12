@@ -6,7 +6,7 @@
 export type ProviderKind = "github" | "google";
 
 export interface IdpConfig {
-  /** 对外 issuer（浏览器可见，经 gateway 暴露），如 http://127.0.0.1:8097/idp */
+  /** 对外 issuer（浏览器可见，经 gateway 暴露），如 http://127.0.0.1:8200/idp */
   issuer: string;
   /** issuer 的路径部分，如 /idp（gateway 反代会去掉该前缀再转发到本服务） */
   publicPath: string;
@@ -69,7 +69,7 @@ function parseJwk(raw: string | undefined): Record<string, unknown> | null {
 }
 
 export function readConfig(env: NodeJS.ProcessEnv): IdpConfig {
-  const issuer = (env.IDP_ISSUER ?? `http://localhost:${env.IDP_PORT ?? 8099}`).replace(/\/$/, "");
+  const issuer = (env.IDP_ISSUER ?? `http://localhost:${env.IDP_PORT ?? 8201}`).replace(/\/$/, "");
   return {
     issuer,
     publicPath: issuerPath(issuer),

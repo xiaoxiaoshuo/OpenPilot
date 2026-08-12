@@ -37,8 +37,8 @@ npm start
 Dev (HMR): run `npm run serve` in one terminal and `npm run dev` in another — Vite serves
 the front-end on :5173 and proxies `/signin`, `/me`, `/api/*` to the node server.
 
-Env (see `.env.example`): `CORE_API_URL` (default `http://localhost:8080`),
-`CORE_ORG_ID` (default `acme`), `PORT` (default 8096), `WEB_UI_PUBLIC_URL`,
+Env (see `.env.example`): `CORE_API_URL` (default `http://localhost:8203`),
+`CORE_ORG_ID` (default `acme`), `PORT` (default 8202), `WEB_UI_PUBLIC_URL`,
 `WEB_UI_PRINCIPALS` (csv allowlist; empty = any id, **dev only**),
 and `CORE_SIGNING_SECRET` (same value as the core when source-auth is enabled).
 

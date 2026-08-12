@@ -1,7 +1,7 @@
 /**
  * gateway 反代 — 参考 qm plugins/portal/src/proxy.ts
- *  - /idp/*         → IdP :8099（去 /idp 前缀）
- *  - 其余 /          → Web UI :8096（注入 x-portal-identity）
+ *  - /idp/*         → IdP :8201（去 /idp 前缀）
+ *  - 其余 /          → Web UI :8202（注入 x-portal-identity）
  */
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { mintPortalIdentity, PORTAL_IDENTITY_HEADER } from "../../core/chassis/src/portal-identity.ts";

@@ -52,16 +52,17 @@ OpenPilot Chat 是一个**简化版在线聊天应用**，核心能力：
 Browser
   │
   ▼
-Portal :8097（网关 / OIDC Client / 统一入口）
+gateway :8200（网关 / OIDC Client / 统一入口）
   │
-  ├──► Web UI :8096（Lit 前端静态资源 + 服务端代理 /api）
-  ├──► Admin :8090（服务端渲染管理台，裸 HTML）
-  └──► Core :8080（Fastify 5 主 API，业务逻辑唯一入口）
+  ├──► IdP :8201（/idp/* 反代，身份提供方）
+  └──► web-ui :8202（Lit 前端静态资源 + 服务端代理 /api）
           │
-          ├──► PostgreSQL（users/sessions/conversations/messages/配置）
-          ├──► 本地文件存储 data/docstore/files/<sha256>
-          ├──► DeepSeek（AI 回复，OpenAI 兼容协议）
-          └──► pg-boss（任务队列：AI 回复、异步任务）
+          └──► core :8203（业务 API）
+                  │
+                  ├──► PostgreSQL（users/sessions/conversations/messages/配置）
+                  ├──► 本地文件存储 data/docstore/files/<sha256>
+                  ├──► DeepSeek（AI 回复，OpenAI 兼容协议）
+                  └──► pg-boss（任务队列：AI 回复、异步任务）
 ```
 
 ### 2.2 分层职责
@@ -146,7 +147,7 @@ Portal :8097（网关 / OIDC Client / 统一入口）
 
 **目标**：管理台可用、可观测、可部署。
 
-- [ ] Admin :8090 服务端渲染：用户列表/禁用、配置管理、任务队列监控、消息审计
+- [ ] Admin :8204 服务端渲染：用户列表/禁用、配置管理、任务队列监控、消息审计
 - [ ] 配置中心：`durable-map`（id + jsonb 通用表）承载运行期配置
 - [ ] 日志：结构化日志 + 请求 ID 贯穿全链路
 - [ ] 指标：请求数、延迟、队列深度、LLM 错误率
@@ -199,7 +200,7 @@ configs (durable-map)
 
 ---
 
-## 5. 后端 API 设计（Core :8080）
+## 5. 后端 API 设计（Core :8203）
 
 统一前缀 `/api/v1`，JSON 进出，错误格式 `{ error: { code, message } }`。
 
@@ -287,7 +288,7 @@ Browser ──► Portal (OIDC Client)
 
 ---
 
-## 8. 前端设计（Web UI :8096）
+## 8. 前端设计（Web UI :8202）
 
 ### 8.1 技术栈
 
@@ -315,7 +316,7 @@ Browser ──► Portal (OIDC Client)
 - 消息实时：优先 WebSocket（Core 扩展），回退 SSE，再回退轮询（30s）——本期实现顺序：轮询 → SSE
 - 分屏布局状态持久化到 localStorage
 
-### 8.4 管理台（Admin :8090）
+### 8.4 管理台（Admin :8204）
 
 - 服务端渲染裸 HTML，无前端框架（Node 原生 http + 模板字符串/轻量模板）
 - 页面：用户管理、配置管理、任务队列监控、消息审计

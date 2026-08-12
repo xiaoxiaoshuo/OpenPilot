@@ -1,4 +1,4 @@
-export const CORE_API_URL = (process.env.CORE_API_URL ?? "http://localhost:8080").replace(/\/$/, "");
+export const CORE_API_URL = (process.env.CORE_API_URL ?? "http://localhost:8203").replace(/\/$/, "");
 export const CORE_ORG_ID = process.env.CORE_ORG_ID ?? "acme";
 const secret = (raw: string | undefined): string | undefined => (raw?.trim() ? raw : undefined);
 

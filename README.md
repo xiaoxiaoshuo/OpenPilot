@@ -91,13 +91,12 @@ OpenPilot Chat 是一个简化版在线聊天应用，支持多用户认证、�
 
 | 端口 | 服务 | 说明 |
 |---|---|---|
-| `8097` | gateway | 统一入口 / OIDC Client / 反代 |
-| `8099` | IdP | 身份提供方（GitHub / Google） |
-| `8196` | web-ui | Lit 前端 + 服务端代理 |
-| `8081` | core | 最小业务 API（会话/消息/DeepSeek AI） |
+| `8200` | gateway | 统一入口 / OIDC Client / 反代 |
+| `8201` | IdP | 身份提供方（GitHub / Google） |
+| `8202` | web-ui | Lit 前端 + 服务端代理 |
+| `8203` | core | 最小业务 API（会话/消息/DeepSeek AI） |
 
-> ⚠️ `8097` 与原 QM 项目的 portal 端口相同。**当前原 QM portal 未运行**，因此不冲突；
-> 若日后需要 QM portal 与 OpenPilot gateway 同时运行，请给 gateway 换端口（改 `PORT` / `GATEWAY_PUBLIC_URL`）。
+> ✅ OpenPilot 使用 `8200`~`8203` 端口段，与原 QM 项目（`8080`/`8090`/`8096`/`8097`）**完全隔离**，可同时运行互不冲突。
 
 ### 原 QM 项目端口（保持不变，未动）
 
@@ -105,20 +104,23 @@ OpenPilot Chat 是一个简化版在线聊天应用，支持多用户认证、�
 |---|---|---|
 | `8080` | Core | Fastify 主 API（业务） |
 | `8090` | Admin | 服务端渲染管理台 |
-| `8096` | Web UI | 前端（被 OpenPilot web-ui 占用前保留） |
-| `8097` | Portal | 网关（**未运行**，端口现由 OpenPilot gateway 使用） |
+| `8096` | Web UI | 前端 |
+| `8097` | Portal | 网关 |
 
 ### 启动 OpenPilot（开发）
 
 ```bash
-# 1. IdP（:8099）
+# 1. IdP（:8201）
 cd IdP && npm install && npm run dev
 
-# 2. gateway（:8097）
+# 2. gateway（:8200）
 cd gateway && npm install && npm run dev
 
-# 3. web-ui（:8196）
+# 3. web-ui（:8202）
 cd web-ui && npm install && npm run serve   # 或 npm run dev（Vite HMR）
+
+# 4. core（:8203）
+cd core && npm install && npm run dev
 ```
 
 ---
@@ -129,16 +131,17 @@ cd web-ui && npm install && npm run serve   # 或 npm run dev（Vite HMR）
 Browser
   │
   ▼
-Portal :8097（网关 / OIDC Client）
+gateway :8200（统一入口 / OIDC Client / 反代）
   │
-  ├──► Web UI :8096（Lit 前端 + 服务端代理）
-  ├──► Admin :8090（服务端渲染管理台）
-  └──► Core :8080（Fastify 主 API）
+  ├──► IdP :8201（/idp/* 反代，身份提供方）
+  └──► web-ui :8202（Lit 前端 + 服务端代理 /api）
           │
-          ├──► PostgreSQL（会话/消息/文件元数据/配置）
-          ├──► 本地文件存储 data/docstore/files
-          ├──► DeepSeek（AI 回复）
-          └──► pg-boss（任务队列）
+          └──► core :8203（业务 API）
+                  │
+                  ├──► PostgreSQL（会话/消息/文件元数据/配置）
+                  ├──► 本地文件存储 data/docstore/files
+                  ├──► DeepSeek（AI 回复）
+                  └──► pg-boss（任务队列）
 ```
 
 ## 核心设计哲学
@@ -166,8 +169,8 @@ Portal :8097（网关 / OIDC Client）
 | qm 的设计 | OpenPilot Chat 对应实现 |
 |---|---|
 | Scope 隔离（数据隔离一等公民） | 全部多租户查询强制 scope 条件（见 docs/PROJECT_PLAN.md §4.3） |
-| 无头核心 + HTTP API | Core :8080（Fastify 5 主 API） |
+| 无头核心 + HTTP API | Core :8203（Fastify 5 主 API） |
 | Postgres 持久化（会话/记忆/队列） | PostgreSQL + pg-boss 任务队列 |
-| Web UI：Vite + Lit | Web UI :8096（Vite 5 + Lit 3） |
+| Web UI：Vite + Lit | Web UI :8202（Vite 5 + Lit 3） |
 | 身份与权限 | OIDC + session cookie + ACL（见 docs/login/AUTHENTICATION.md） |
 | 多 harness / 多模型可切换 | LLM Provider 抽象（DeepSeek 默认，可换 Claude / Codex） |

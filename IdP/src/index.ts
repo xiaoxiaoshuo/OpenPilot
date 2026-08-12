@@ -1,6 +1,6 @@
 /**
  * IdP 入口 — OpenPilot 身份提供方（OIDC IdP），对接 GitHub / Google
- * 运行：npm run dev（:8099，经 gateway /idp/* 对外暴露）
+ * 运行：npm run dev（:8201，经 gateway /idp/* 对外暴露）
  */
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
@@ -15,7 +15,7 @@ import { TokenSigner } from "./tokens.ts";
 import { createMemoryClaimStore } from "./claims.ts";
 import { createIdpHandler } from "./server.ts";
 
-const PORT = portFromEnv(8099);
+const PORT = portFromEnv(8201);
 const IS_PROD = process.env.NODE_ENV === "production";
 const CFG = readConfig(process.env);
 

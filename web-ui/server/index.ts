@@ -28,7 +28,7 @@ import {
   portFromEnv,
 } from "../../core/chassis/src/env.ts";
 
-const PORT = portFromEnv(8096);
+const PORT = portFromEnv(8202);
 const PUBLIC_URL = (process.env.WEB_UI_PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
 const WEB_UI_DEV = process.env.WEB_UI_DEV === "1";
 const ALLOW_UNSIGNED_TEST_IDENTITY =
@@ -466,7 +466,7 @@ async function coreFetchCap(
 }
 
 async function postTurnAndMint(res: ServerResponse, turn: unknown, user: string, threadRef: string): Promise<void> {
-  const r = await coreFetch("POST", `/v1/turns?async=1`, JSON.stringify(turn));
+  const r = await coreFetch("POST", `/v1/turns?async=1&principalId=${encodeURIComponent(user)}`, JSON.stringify(turn));
   if (r.status >= 200 && r.status < 300) {
     try {
       const parsed = JSON.parse(r.text) as Record<string, unknown> & { runId?: string };
@@ -838,6 +838,11 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       return relay(res, r);
     }
 
+    if (method === "GET" && path === "/api/projects") {
+      const r = await coreFetch("GET", `/v1/projects?principalId=${encodeURIComponent(user)}`);
+      return relay(res, r);
+    }
+
     if (method === "POST" && path === "/api/projects") {
       let name = "";
       try {
@@ -848,7 +853,11 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
         return json(res, 400, { error: "bad_request" });
       }
       if (!name) return json(res, 400, { error: "bad_request", message: "name required" });
-      const r = await coreFetch("POST", "/v1/projects", JSON.stringify({ principalId: user, name }));
+      const r = await coreFetch(
+        "POST",
+        `/v1/projects?principalId=${encodeURIComponent(user)}`,
+        JSON.stringify({ name }),
+      );
       return relay(res, r);
     }
 
@@ -907,7 +916,7 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
     if (method === "GET" && path === "/api/directory/resolve") {
       const q = (url.searchParams.get("q") ?? "").trim().slice(0, 80);
       if (!q) return json(res, 400, { error: "bad_request", message: "q required" });
-      const r = await coreFetch("GET", `/v1/directory/resolve?q=${encodeURIComponent(q)}`);
+      const r = await coreFetch("GET", `/v1/directory/resolve?q=${encodeURIComponent(q)}&principalId=${encodeURIComponent(user)}`);
       return relay(res, r);
     }
 
@@ -1184,7 +1193,11 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
         if (e instanceof PayloadTooLargeError) throw e;
         return json(res, 400, { error: "bad_request" });
       }
-      const r = await coreFetch("PUT", "/v1/memory", JSON.stringify({ principalId: user, content, revision }));
+      const r = await coreFetch(
+        "PUT",
+        `/v1/memory?principalId=${encodeURIComponent(user)}`,
+        JSON.stringify({ content, revision }),
+      );
       return relay(res, r);
     }
 
@@ -1232,8 +1245,8 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       }
       const r = await coreFetch(
         "POST",
-        `/v1/sessions/${encodeURIComponent(id)}`,
-        JSON.stringify({ principalId: user, ...patch }),
+        `/v1/sessions/${encodeURIComponent(id)}?principalId=${encodeURIComponent(user)}`,
+        JSON.stringify(patch),
       );
       return relay(res, r);
     }
@@ -1265,7 +1278,11 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       }
       if (!provider && !host) return json(res, 400, { error: "bad_request", message: "provider or host required" });
       const rawBody = JSON.stringify({ principalId: user, ...(provider ? { provider } : { host }) });
-      const r = await coreFetch("POST", "/v1/connectors/oauth/revoke", rawBody);
+      const r = await coreFetch(
+        "POST",
+        `/v1/connectors/oauth/revoke?principalId=${encodeURIComponent(user)}`,
+        rawBody,
+      );
       return relay(res, r);
     }
 
@@ -1571,7 +1588,7 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       const threadRef = url.searchParams.get("threadRef") ?? "";
       if (!threadRef.startsWith("web:")) return json(res, 404, { error: "not_found" });
       const tryRun = async (runId: string, ownedByUser = true): Promise<boolean> => {
-        const r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(runId)}`);
+        const r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(runId)}?principalId=${encodeURIComponent(user)}`);
         if (r.status < 200 || r.status >= 300) {
           if (ownedByUser) forgetRun(runId);
           return false;
@@ -1594,7 +1611,7 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       for (const runId of Array.from(activeRunsByThread.get(threadKey(user, threadRef)) ?? [])) {
         if (await tryRun(runId)) return;
       }
-      const d = await coreFetch("GET", `/v1/runs?threadRef=${encodeURIComponent(threadRef)}`);
+      const d = await coreFetch("GET", `/v1/runs?threadRef=${encodeURIComponent(threadRef)}&principalId=${encodeURIComponent(user)}`);
       if (d.status >= 200 && d.status < 300) {
         let runId: string | null = null;
         try {
@@ -1622,7 +1639,7 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       }
       const r = await coreFetch(
         "POST",
-        `/v1/runs/${encodeURIComponent(id)}/signal`,
+        `/v1/runs/${encodeURIComponent(id)}/signal?principalId=${encodeURIComponent(user)}`,
         JSON.stringify({ kind, ...(text !== undefined ? { text } : {}) }),
       );
       return relay(res, r);
@@ -1635,7 +1652,7 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
         closed = true;
       });
       if (!ownsRun(id, user)) {
-        const auth = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}`);
+        const auth = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}?principalId=${encodeURIComponent(user)}`);
         if (auth.status < 200 || auth.status >= 300)
           return json(res, auth.status === 404 ? 404 : 502, {
             error: auth.status === 404 ? "not_found" : "upstream_error",
@@ -1659,10 +1676,10 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
         if (closed) return;
         let r: { status: number; text: string };
         try {
-          r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}`);
+          r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}?principalId=${encodeURIComponent(user)}`);
         } catch {
           try {
-            r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}`);
+            r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}?principalId=${encodeURIComponent(user)}`);
           } catch {
             sseEvent(res, "failed", { reason: "upstream_unreachable" });
             break;
@@ -1744,7 +1761,7 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
 
     if (method === "GET" && path.startsWith("/api/runs/")) {
       const id = decodeURIComponent(path.slice("/api/runs/".length));
-      const r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}`);
+      const r = await coreFetch("GET", `/v1/runs/${encodeURIComponent(id)}?principalId=${encodeURIComponent(user)}`);
       try {
         const s = (JSON.parse(r.text) as { status?: string }).status;
         if (s === "done" || s === "failed") forgetRun(id);

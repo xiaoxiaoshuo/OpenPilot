@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import { fileURLToPath } from "node:url";
 
-const SERVER = process.env.WEB_UI_SERVER_URL ?? "http://127.0.0.1:8096";
+const SERVER = process.env.WEB_UI_SERVER_URL ?? "http://127.0.0.1:8202";
 
 const here = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url));
 

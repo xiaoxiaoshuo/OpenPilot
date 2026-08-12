@@ -3,6 +3,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@earendil-works/pi-ai";
 import type { UserMessageWithAttachments } from "@earendil-works/pi-web-ui";
 import "./marked-dedupe";
+import { restoreDialogFocus } from "./dialog-focus";
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
 import "@mariozechner/mini-lit/dist/CodeBlock.js";
 import { html, nothing, render, type TemplateResult } from "lit";
@@ -126,6 +127,8 @@ const redrawHooks = new Set<() => void>();
 let proactiveOpenerStarted = false;
 let tagDialogOpen = false;
 let tagDraft = "";
+let tagError = "";
+let tagOpener: HTMLElement | null = null;
 
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -1050,6 +1053,8 @@ export function createChatSurface(
       `,
       chatState.host,
     );
+    const tagDialog = chatState.host?.querySelector<HTMLDialogElement>(".tag-dialog");
+    if (tagDialog && !tagDialog.open) tagDialog.showModal();
     decorateStreamingTail();
     ctx.composer.resizeComposer();
     scrollTranscript(opts.forceScroll);
@@ -1184,22 +1189,42 @@ export function createChatSurface(
   }
 
   function openTagDialog(): void {
+    tagOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     tagDraft = "";
+    tagError = "";
     tagDialogOpen = true;
     drawActiveChat();
+    queueMicrotask(() => document.querySelector<HTMLInputElement>("#tag-name")?.focus());
   }
 
   function closeTagDialog(): void {
     if (!tagDialogOpen) return;
     tagDialogOpen = false;
+    tagError = "";
     drawActiveChat();
+    queueMicrotask(() => {
+      const target = tagOpener;
+      tagOpener = null;
+      restoreDialogFocus(target, () => document.querySelector<HTMLElement>(".op-tag-add"));
+    });
   }
 
   async function saveTag(): Promise<void> {
     const tag = tagDraft.trim();
-    if (!tag || !chatState.sessionId) return;
+    if (!tag) {
+      tagError = "Enter a tag name.";
+      drawActiveChat();
+      queueMicrotask(() => document.querySelector<HTMLInputElement>("#tag-name")?.focus());
+      return;
+    }
+    if (!chatState.sessionId) {
+      tagError = "Start a conversation first.";
+      drawActiveChat();
+      return;
+    }
     const tags = [...new Set([...currentSessionTags(), tag])];
     tagDialogOpen = false;
+    tagError = "";
     await persistTags(chatState.sessionId, tags);
   }
 
@@ -1212,35 +1237,53 @@ export function createChatSurface(
   function tagDialogTpl(): TemplateResult | typeof nothing {
     if (!tagDialogOpen) return nothing;
     return html`
-      <div class="op-dialog-overlay" @click=${closeTagDialog}>
-        <div class="op-dialog" role="dialog" aria-modal="true" @click=${(e: Event) => e.stopPropagation()}>
-          <h3>编辑标签</h3>
-          <input
-            class="op-tag-input"
-            placeholder="添加标签..."
-            .value=${tagDraft}
-            autofocus
-            @input=${(e: InputEvent) => {
-              tagDraft = (e.currentTarget as HTMLInputElement).value;
-              drawActiveChat();
-            }}
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void saveTag();
-              } else if (e.key === "Escape") {
-                closeTagDialog();
-              }
-            }}
-          />
-          <div class="op-dialog-actions">
-            <button class="op-btn op-btn-gray" type="button" @click=${closeTagDialog}>取消</button>
-            <button class="op-btn op-btn-primary" type="button" ?disabled=${!tagDraft.trim()} @click=${() => void saveTag()}>
-              保存
+      <dialog
+        class="project-dialog tag-dialog"
+        aria-labelledby="tag-dialog-title"
+        @close=${closeTagDialog}
+        @click=${(event: MouseEvent) =>
+          event.target === event.currentTarget && (event.currentTarget as HTMLDialogElement).close()}
+      >
+        <form @submit=${(event: SubmitEvent) => { event.preventDefault(); void saveTag(); }}>
+          <div class="project-dialog-head">
+            <span class="context-glyph large">${icon(Tag, 21)}</span>
+            <div><h2 id="tag-dialog-title">New tag</h2></div>
+            <button
+              class="project-icon-button"
+              type="button"
+              aria-label="Close new tag"
+              title="Close"
+              @click=${closeTagDialog}
+            >
+              ${icon(X, 16)}
             </button>
           </div>
-        </div>
-      </div>
+          <label class="project-name-field" for="tag-name">
+            <span>Name</span>
+            <input
+              id="tag-name"
+              data-focus-key="tag-name"
+              name="name"
+              maxlength="40"
+              autocomplete="off"
+              placeholder="design review"
+              .value=${tagDraft}
+              @input=${(event: InputEvent) => {
+                tagDraft = (event.currentTarget as HTMLInputElement).value;
+                tagError = "";
+                drawActiveChat();
+              }}
+            />
+          </label>
+          <div class="form-error" aria-live="polite">${tagError}</div>
+          <div class="project-dialog-actions">
+            <button class="btn" type="button" @click=${closeTagDialog}>Cancel</button>
+            <button class="btn primary" type="submit" ?disabled=${!tagDraft.trim()}>
+              ${icon(Tag, 15)}<span>Create tag</span>
+            </button>
+          </div>
+        </form>
+      </dialog>
     `;
   }
 

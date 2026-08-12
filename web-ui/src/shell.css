@@ -1122,72 +1122,7 @@ a.chat-row-open {
   color: var(--foreground);
 }
 
-/* 标签弹窗 */
-.op-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.45);
-}
-.op-dialog {
-  width: 320px;
-  max-width: calc(100vw - 32px);
-  padding: 20px;
-  border-radius: 14px;
-  background: var(--popover); /* 浅色=白 / 深色=深灰，自动适配 */
-  color: var(--popover-foreground);
-  border: 1px solid var(--border);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
-}
-.op-dialog h3 {
-  margin: 0 0 14px;
-  font-size: 16px;
-  font-weight: 650;
-}
-.op-tag-input {
-  width: 100%;
-  box-sizing: border-box;
-  height: 40px;
-  padding: 0 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--secondary) 60%, transparent);
-  color: var(--foreground);
-  font-size: 14px;
-  outline: none;
-}
-.op-tag-input:focus {
-  border-color: #7c3aed;
-}
-.op-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-.op-btn {
-  height: 34px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: 9px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.op-btn-gray {
-  background: color-mix(in srgb, var(--secondary) 90%, #000 5%);
-  color: var(--foreground);
-}
-.op-btn-primary {
-  background: #7c3aed;
-  color: #fff;
-}
-.op-btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+
 .icon-btn {
   width: 34px;
   height: 34px;

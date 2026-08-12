@@ -1,6 +1,6 @@
 /**
  * OIDC Client — 参考 qm plugins/portal/src/oidc.ts
- * 对接 OpenPilot IdP（:8099，经 gateway /idp/* 对外暴露，issuer 为 http://127.0.0.1:8097/idp）
+ * 对接 OpenPilot IdP（:8201，经 gateway /idp/* 对外暴露，issuer 为 http://127.0.0.1:8200/idp）
  */
 import { createHash, randomBytes } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";

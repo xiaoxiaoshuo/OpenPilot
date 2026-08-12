@@ -92,5 +92,5 @@ test("only the first two path segments are addressed", () => {
 
 test("sessionLink builds an absolute link under the serving base", () => {
   assert.equal(sessionLink("https://portal.example", "/web-ui/", "s1"), "https://portal.example/web-ui/?session=s1");
-  assert.equal(sessionLink("http://localhost:8096", "", "s1"), "http://localhost:8096/?session=s1");
+  assert.equal(sessionLink("http://localhost:8202", "", "s1"), "http://localhost:8202/?session=s1");
 });

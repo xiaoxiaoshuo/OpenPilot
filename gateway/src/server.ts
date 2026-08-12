@@ -6,8 +6,8 @@
  *   /auth/callback                   回调（code 换 token → session cookie）
  *   /auth/logout                     登出
  *   /me                              当前用户
- *   /idp/*                           反代到 IdP :8099
- *   其余                             反代到 Web UI :8096（注入 x-portal-identity）
+ *   /idp/*                           反代到 IdP :8201
+ *   其余                             反代到 Web UI :8202（注入 x-portal-identity）
  *
  * 运行：
  *   npm run dev    （--watch 热重载）
@@ -56,11 +56,11 @@ export const del = (path: string, handler: Handler) => addRoute("DELETE", path, 
 
 // ───────────────────────── 配置 ─────────────────────────
 
-const PORT = Number(process.env.PORT ?? 8097);
+const PORT = Number(process.env.PORT ?? 8200);
 const HOST = process.env.HOST ?? "0.0.0.0";
 const PUBLIC_URL = (process.env.GATEWAY_PUBLIC_URL ?? `http://localhost:${PORT}`).replace(/\/$/, "");
-const IDP_UPSTREAM = process.env.IDP_UPSTREAM ?? "http://127.0.0.1:8099";
-const WEB_UI_UPSTREAM = process.env.WEB_UI_UPSTREAM ?? "http://127.0.0.1:8096";
+const IDP_UPSTREAM = process.env.IDP_UPSTREAM ?? "http://127.0.0.1:8201";
+const WEB_UI_UPSTREAM = process.env.WEB_UI_UPSTREAM ?? "http://127.0.0.1:8202";
 const IDP_ISSUER = (process.env.IDP_ISSUER ?? `${PUBLIC_URL}/idp`).replace(/\/$/, "");
 const OIDC_CLIENT_ID = process.env.OIDC_CLIENT_ID ?? "openpilot-web";
 const OIDC_CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || process.env.IDP_CLIENT_SECRET || "";
