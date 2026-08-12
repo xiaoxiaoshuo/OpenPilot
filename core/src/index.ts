@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { json, readBody } from "../chassis/src/http.ts";
 import { verifyPortalIdentity, PORTAL_IDENTITY_HEADER } from "../chassis/src/portal-identity.ts";
 import { createStore, type Entry, type StoredProject, type StoredSession } from "./store.ts";
-import { completeChat, type ChatTool, type CompleteChatResult, type ToolCall } from "./ai.ts";
+import { completeChat, completeChatStream, type ChatTool, type CompleteChatResult, type ToolCall } from "./ai.ts";
 import { BOT_PROFILES, botProfileById, enabledProfiles, type BotProfile } from "./bots/profiles.ts";
 
 // ───────────────────────── 配置 ─────────────────────────
@@ -41,8 +41,10 @@ interface Run {
   error?: string;
   /** 已请求 abort（AI 调用结果将被丢弃） */
   abortRequested?: boolean;
-  /** 流式回复快照（done 后为最终文本） */
+  /** 流式回复快照（生成过程中持续增长，done 后为最终文本） */
   partial?: string;
+  /** 流式调用的中止控制器（abort 信号时真正中断 DeepSeek 请求） */
+  abortController?: AbortController;
 }
 const runs = new Map<string, Run>();
 const runsBySession = new Map<string, string[]>(); // sessionId -> runIds
@@ -723,7 +725,10 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       createdAt: Date.now(),
     };
     runSignals.set(id, [...(runSignals.get(id) ?? []), sig]);
-    if (kind === "abort") run.abortRequested = true;
+    if (kind === "abort") {
+      run.abortRequested = true;
+      run.abortController?.abort();
+    }
     else {
       // steer：追加 user entry（ts 去重语义，qm 落库 + steered 标记）
       const at = Date.now();
@@ -1107,10 +1112,21 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
 
   let text: string;
   let toolCalls: ToolCall[] | undefined;
+  const ac = new AbortController();
+  run.abortController = ac;
   try {
-    const result = await completeChat({ model, system, messages, tools });
-    text = typeof result === "string" ? result : result.text;
-    toolCalls = typeof result === "string" ? undefined : result.toolCalls;
+    const result = await completeChatStream({
+      model,
+      system,
+      messages,
+      tools,
+      signal: ac.signal,
+      onPartial: (full) => {
+        run.partial = full;
+      },
+    });
+    text = result.text;
+    toolCalls = result.toolCalls;
   } catch (e) {
     // abort 期间的结果丢弃（qm userAborted 语义）
     if (aborted()) {
@@ -1230,15 +1246,21 @@ async function runBot(session: StoredSession, profile: BotProfile, model: string
       };
     });
   let text: string;
+  const ac = new AbortController();
+  run.abortController = ac;
   try {
-    const result = await completeChat({
+    const result = await completeChatStream({
       model,
       system:
         profile.personality +
         "\n\n你是被群助手召唤来回答的用户问题。基于本会话上下文回答，风格遵循你的角色设定。不要回复或评价其他机器人的发言。",
       messages: history,
+      signal: ac.signal,
+      onPartial: (full) => {
+        run.partial = full;
+      },
     });
-    text = typeof result === "string" ? result : result.text;
+    text = result.text;
   } catch (e) {
     run.status = "failed";
     run.finishedAt = Date.now();
