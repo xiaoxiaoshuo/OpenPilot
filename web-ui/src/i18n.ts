@@ -179,6 +179,19 @@ const zh: Record<string, string> = {
   "tags.enterTagName": "请输入标签名称。",
   "tags.startConversation": "请先开始一个对话。",
 
+  // 群组机器人管理
+  "bots.title": "群组机器人",
+  "bots.titleCopy": "主 agent 协调 + 附加机器人补充回答。",
+  "bots.primaryName": "主 agent 名称",
+  "bots.primaryNameHint": "显示在群组聊天中作为主 agent 的回复署名。",
+  "bots.attached": "附加机器人",
+  "bots.attachedHint": "启用后，主 agent 会在合适时召唤它们补充回答。",
+  "bots.noProfiles": "暂无可用机器人预设。",
+  "bots.disable": "停用 {name}",
+  "bots.enable": "启用 {name}",
+  "bots.remove": "移除 {name}",
+  "bots.on": "启用中",
+
   // 记忆页
   "memory.discardConfirm": "放弃未保存的记忆修改？",
   "memory.title": "记忆",
@@ -380,6 +393,19 @@ const en: Record<string, string> = {
   "tags.closeNewTag": "Close new tag",
   "tags.enterTagName": "Enter a tag name.",
   "tags.startConversation": "Start a conversation first.",
+
+  // group bots management
+  "bots.title": "Group bots",
+  "bots.titleCopy": "The primary agent coordinates; attached bots add extra answers.",
+  "bots.primaryName": "Primary agent name",
+  "bots.primaryNameHint": "Shown as the primary agent's signature in group chats.",
+  "bots.attached": "Attached bots",
+  "bots.attachedHint": "When enabled, the primary agent may summon them to add answers.",
+  "bots.noProfiles": "No bot profiles available.",
+  "bots.disable": "Disable {name}",
+  "bots.enable": "Enable {name}",
+  "bots.remove": "Remove {name}",
+  "bots.on": "On",
 
   "memory.discardConfirm": "Discard unsaved memory changes?",
   "memory.title": "Memory",

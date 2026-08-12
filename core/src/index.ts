@@ -164,6 +164,7 @@ function projectView(p: StoredProject): Record<string, unknown> {
     updatedAt: p.updatedAt,
     memberIds: [...p.memberIds],
     scopeId: `group:web-project-${p.id}`,
+    ...(p.botConfig ? { botConfig: p.botConfig } : {}),
     members: p.memberIds.map((principalId) => ({
       principalId,
       displayName: displayNameOf(principalId),
@@ -1252,7 +1253,7 @@ async function runBot(session: StoredSession, profile: BotProfile, model: string
       seq: session.entries.length + 1,
       parentSeq: null,
       type: "assistant",
-      payload: { text, author: profile.name, bot: profile.botId },
+      payload: { text, author: profile.name, bot: profile.botId, avatar: profile.avatar },
       createdAt: at,
     });
     session.messages += 1;

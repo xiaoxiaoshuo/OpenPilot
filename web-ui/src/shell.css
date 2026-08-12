@@ -1339,6 +1339,80 @@ a.chat-row-open {
   font-size: 15px;
   line-height: 1.65;
 }
+.assistant-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.assistant-author-avatar {
+  font-size: 14px;
+  line-height: 1;
+}
+.context-bots-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--secondary) 70%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+.bots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.bots-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.bots-row-avatar {
+  font-size: 18px;
+  line-height: 1;
+}
+.bots-row-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.bots-row-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.bots-row-caps {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bots-primary-name {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+}
+.bots-primary-name:focus {
+  border-color: color-mix(in srgb, var(--foreground) 32%, var(--border));
+}
 .assistant-body markdown-block,
 .user-bubble markdown-block {
   display: block;

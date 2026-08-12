@@ -166,6 +166,10 @@ export interface CoreProject {
   members: Array<{ principalId: string; displayName: string }>;
   createdAt?: number;
   updatedAt?: number;
+  botConfig?: {
+    primaryName?: string;
+    attached: Array<{ botId: string; enabled: boolean }>;
+  };
 }
 
 export function slackThreadUrl(workspaceUrl: string | null, threadRef: string): string | null {
@@ -1174,6 +1178,7 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
   let pending: ToolActivity[] = [];
   let deliveryFiles: DeliveredFile[] = [];
   let posted = false;
+  let pendingAuthor: { author?: string; bot?: string; avatar?: string } | undefined;
   const heldPosts = new Map<string, { text: string; activity: ToolActivity }>();
   const spillHeldPosts = (): void => {
     for (const held of heldPosts.values()) pending.push(held.activity);
@@ -1226,6 +1231,12 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
     out.push(msg as AgentMessage);
     pending = [];
     deliveryFiles = [];
+    if (pendingAuthor) {
+      (msg as unknown as { author?: string; bot?: string; avatar?: string }).author = pendingAuthor.author;
+      (msg as unknown as { author?: string; bot?: string; avatar?: string }).bot = pendingAuthor.bot;
+      (msg as unknown as { author?: string; bot?: string; avatar?: string }).avatar = pendingAuthor.avatar;
+      pendingAuthor = undefined;
+    }
   };
   for (const e of entries) {
     const payload = e.payload as {
@@ -1297,6 +1308,11 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
         out.push(msg as AgentMessage);
       }
     } else if (e.type === "assistant") {
+      pendingAuthor = {
+        author: (e.payload as { author?: string }).author,
+        bot: (e.payload as { bot?: string }).bot,
+        avatar: (e.payload as { avatar?: string }).avatar,
+      };
       if (text || pending.length || heldPosts.size) {
         spillHeldPosts();
         if (posted && text) {

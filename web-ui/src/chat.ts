@@ -1356,6 +1356,8 @@ export function createChatSurface(
     }
     if (role === "assistant") {
       const msg = message as AssistantMessage;
+      const authored = (msg as unknown as { author?: string; bot?: string; avatar?: string }).author;
+      const botAvatar = (msg as unknown as { avatar?: string }).avatar;
       const work = isStreaming ? null : (msg as AssistantWork).work;
       const text = messageText(msg).trim();
       const hasText = Boolean(text);
@@ -1370,6 +1372,7 @@ export function createChatSurface(
       return html`
         <article class="message-row assistant-row ${isStreaming ? "streaming" : ""}" data-index=${index}>
           <div class="assistant-body">
+            ${authored ? html`<div class="assistant-author"><span class="assistant-author-avatar">${botAvatar ?? ""}</span><span>${authored}</span></div>` : nothing}
             ${showWork ? workBlock(work, isStreaming) : nothing} ${assistantContent(msg, isStreaming, showWork)}
             ${assistantFileList(deliveredFiles)}
             ${msg.stopReason === "error" && msg.errorMessage ? html`<div class="composer-error inline">${msg.errorMessage}</div>` : nothing}

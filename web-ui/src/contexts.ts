@@ -39,6 +39,7 @@ import type { CronView } from "./crons";
 import { cronRunSummary, cronRunSummaryTitle, cronScheduleSummary } from "./cron-format";
 import { restoreDialogFocus } from "./dialog-focus";
 import { ambientPolicySection, loadAmbientPolicy, resetAmbientPolicy } from "./ambient-policy";
+import { botSettingsSection, loadBotSettings, resetBotSettings } from "./context-bots";
 
 interface ScopeFile {
   id: string;
@@ -297,8 +298,9 @@ export function scopeFilterControl(current: string | null, onSelect: (scopeId: s
 }
 
 function sessionsIn(scopeId: string): CoreSession[] {
+  const me = appState.me?.user ?? "";
   return sessionsState.list
-    .filter((s) => s.scopeId === scopeId && !s.archived)
+    .filter((s) => s.scopeId === scopeId && !s.archived && s.threadRef.startsWith(`web:${me}:`))
     .sort((a, b) => activityOf(b) - activityOf(a));
 }
 
@@ -404,11 +406,13 @@ function contextCard(c: CoreContext): TemplateResult {
   let access = t("contexts.shared");
   if (c.project && isProjectOwner(c)) access = t("contexts.owned");
   else if (c.kind === "personal") access = t("contexts.private");
+  const botCount = c.project?.botConfig?.attached.filter((a) => a.enabled).length ?? 0;
   return html`
     <button class="card context-card" type="button" @click=${() => selectContext(c.scopeId)}>
       <div class="card-head">
         <span class="context-glyph">${icon(glyph, 17)}</span>
         <h2 class="card-title">${title}</h2>
+        ${botCount ? html`<span class="context-bots-badge" title=${`${botCount} 个群组机器人`}>${icon(Users, 12)}${botCount}</span>` : nothing}
         ${c.isPrivate ? html`<span class="context-lock" title=${t("contexts.privateChannel")}>${icon(Lock, 13)}</span>` : nothing}
         <span class="badge">${access}</span>
       </div>
@@ -479,7 +483,8 @@ function detailTpl(c: CoreContext): TemplateResult {
           }
         </div>
         <aside class="context-settings" aria-label=${c.project ? t("contexts.projectSettings") : t("contexts.contextSettings")}>
-          ${c.project ? projectMembersSection(c) : nothing} ${ambientPolicySection(c.scopeId)}
+          ${c.project ? projectMembersSection(c) : nothing} ${botSettingsSection(isProjectOwner(c))}
+          ${ambientPolicySection(c.scopeId)}
         </aside>
       </div>
     </div>
@@ -1201,11 +1206,16 @@ function selectContext(scopeId: string | null): void {
   contextsState.resourcesNotice = "";
   contextsState.resourcesLoading = false;
   resetAmbientPolicy();
+  resetBotSettings();
   syncUrlFromState();
   drawContexts();
   if (scopeId) {
     void loadScopeResources(scopeId);
     void loadAmbientPolicy(scopeId, drawContexts);
+    if (scopeId.startsWith("group:")) {
+      const projectId = scopeId.slice("group:web-project-".length);
+      void loadBotSettings(projectId, drawContexts);
+    }
   }
 }
 
