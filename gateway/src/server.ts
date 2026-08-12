@@ -67,6 +67,8 @@ const OIDC_CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || process.env.IDP_CLI
 const SESSION_SECRET = process.env.GATEWAY_SESSION_SECRET || process.env.IDP_TOKEN_SECRET || "";
 const IDENTITY_SECRET = process.env.PORTAL_IDENTITY_SECRET ?? (SESSION_SECRET || undefined);
 const SECURE_COOKIES = PUBLIC_URL.startsWith("https://");
+const providerConfigured = (clientId: string | undefined, clientSecret: string | undefined): boolean =>
+  Boolean(clientId?.trim() && clientSecret?.trim());
 
 if (!OIDC_CLIENT_SECRET) {
   console.error("[gateway] FATAL: OIDC_CLIENT_SECRET / IDP_CLIENT_SECRET is required");
@@ -98,6 +100,10 @@ const authCfg: GatewayAuthConfig = {
   tmpTtlS: Number(process.env.GATEWAY_TMP_TTL_S ?? 600),
   sessionTtlS: Number(process.env.GATEWAY_SESSION_TTL_S ?? 7 * 24 * 3600),
   secureCookies: SECURE_COOKIES,
+  providers: {
+    github: providerConfigured(process.env.GITHUB_CLIENT_ID, process.env.GITHUB_CLIENT_SECRET),
+    google: providerConfigured(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET),
+  },
 };
 
 const auth = createAuthHandlers(authCfg);
