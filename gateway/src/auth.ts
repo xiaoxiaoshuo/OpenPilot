@@ -27,6 +27,11 @@ export interface GatewayAuthConfig {
   tmpTtlS: number;
   sessionTtlS: number;
   secureCookies: boolean;
+  /** 仅展示 IdP 已配置的第三方登录入口，避免跳转到不可用 provider。 */
+  providers: {
+    github: boolean;
+    google: boolean;
+  };
 }
 
 const TMP_COOKIE = "gateway_oidc_tmp";
@@ -72,7 +77,10 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
     const returnTo = sanitizeReturnTo(url.searchParams.get("returnTo"), cfg.publicUrl);
     const provider = url.searchParams.get("provider");
     if (provider !== "github" && provider !== "google") {
-      return sendLoginPage(res, returnTo);
+      return sendLoginPage(res, returnTo, cfg.providers);
+    }
+    if (!cfg.providers[provider]) {
+      return sendLoginPage(res, returnTo, cfg.providers, `Sign-in with ${provider} is not configured.`);
     }
     const state = randomToken();
     const nonce = randomToken();
@@ -175,9 +183,20 @@ function safeEqual(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-function sendLoginPage(res: ServerResponse, returnTo: string): void {
+function sendLoginPage(
+  res: ServerResponse,
+  returnTo: string,
+  providers: GatewayAuthConfig["providers"],
+  notice = "",
+): void {
   const githubHref = `/auth/login?provider=github&returnTo=${encodeURIComponent(returnTo)}`;
   const googleHref = `/auth/login?provider=google&returnTo=${encodeURIComponent(returnTo)}`;
+  const buttons = [
+    providers.github ? `<a class="btn gh" href="${githubHref}"><span class="dot">GH</span> Continue with GitHub</a>` : "",
+    providers.google ? `<a class="btn gg" href="${googleHref}"><span class="dot">G</span> Continue with Google</a>` : "",
+  ].join("");
+  const content = buttons || `<p class="notice">No sign-in provider is configured. Ask your administrator to configure GitHub or Google OAuth.</p>`;
+  const noticeHtml = notice ? `<p class="notice">${escapeHtml(notice)}</p>` : "";
   const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Sign in · OpenPilot</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
@@ -190,12 +209,13 @@ function sendLoginPage(res: ServerResponse, returnTo: string): void {
   a.btn:hover{border-color:#3b82f6;background:#262b44}
   a.btn .dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
   .gh{background:#24292e}.gh .dot{background:#333}.gg{background:#1a73e8}.gg .dot{background:#fff;color:#1a73e8}
+  .notice{color:#fbbf24;background:#2a2312;border:1px solid #5c4a1e;border-radius:10px;padding:10px 12px;font-size:14px}
 </style>
 <main><div class="card">
   <h1>Sign in to OpenPilot</h1>
   <p class="sub">Choose how you'd like to continue</p>
-  <a class="btn gh" href="${githubHref}"><span class="dot">GH</span> Continue with GitHub</a>
-  <a class="btn gg" href="${googleHref}"><span class="dot">G</span> Continue with Google</a>
+  ${noticeHtml}
+  ${content}
 </div></main></html>`;
   res.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
