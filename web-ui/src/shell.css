@@ -991,7 +991,7 @@ a.chat-row-open {
   min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   position: relative;
 }
 .drop-overlay {
@@ -1332,6 +1332,44 @@ a.chat-row-open {
 }
 .assistant-row {
   display: block;
+}
+.message-avatar {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--secondary) 78%, var(--background));
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+.assistant-row.group-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.user-row.group-message {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.user-row.group-message .message-meta {
+  right: 38px;
+}
+.assistant-avatar {
+  background: color-mix(in srgb, var(--muted) 84%, var(--background));
+}
+.user-avatar {
+  order: 2;
+  background: color-mix(in srgb, var(--primary, #7c3aed) 16%, var(--background));
 }
 .assistant-body {
   min-width: 0;

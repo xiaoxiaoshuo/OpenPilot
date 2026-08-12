@@ -88,7 +88,7 @@ import {
   harnessSupportsEffort,
   harnessSupportsFastMode,
 } from "./model-options";
-import { browserRenderableImage, formatBytes, icon, relTime } from "./ui";
+import { browserRenderableImage, formatBytes, icon, initials, relTime } from "./ui";
 import { adminSessionLogUrl, appState, can, renderSidebarTop, syncUrlFromState } from "./shell";
 import {
   addPendingSession,
@@ -1350,16 +1350,18 @@ export function createChatSurface(
   function chatMessage(message: AgentMessage, index: number, isStreaming = false): TemplateResult | typeof nothing {
     if ((message as { opener?: boolean }).opener) return nothing;
     const role = (message as { role?: string }).role;
+    const groupChat = chatState.scopeId?.startsWith("group:") ?? false;
     if (role === "user" || role === "user-with-attachments") {
       const attachments = ((message as UserMessageWithAttachments).attachments ?? []) as UserAttachmentView[];
       const steered = Boolean((message as { steered?: boolean }).steered);
       return html`
-        <article class="message-row user-row ${steered ? "steered-row" : ""}" data-index=${index}>
+        <article class="message-row user-row ${groupChat ? "group-message" : ""} ${steered ? "steered-row" : ""}" data-index=${index}>
           ${steered ? html`<div class="steer-label">↪ steered the running task</div>` : nothing}
           <div class="message-bubble user-bubble">
             ${markdown(messageText(message))}
             ${attachments.length ? html`<div class="message-files">${attachments.map(userAttachmentBadge)}</div>` : nothing}
           </div>
+          ${groupChat ? html`<span class="message-avatar user-avatar" title=${appState.me?.user ?? "You"}>${initials(appState.me?.user ?? "?")}</span>` : nothing}
           ${messageMeta(message, index)}
         </article>
       `;
@@ -1368,6 +1370,7 @@ export function createChatSurface(
       const msg = message as AssistantMessage;
       const authored = (msg as unknown as { author?: string; bot?: string; avatar?: string }).author;
       const botAvatar = (msg as unknown as { avatar?: string }).avatar;
+      const assistantAvatar = groupChat && authored ? botAvatar || "🤖" : null;
       const work = isStreaming ? null : (msg as AssistantWork).work;
       const text = messageText(msg).trim();
       const hasText = Boolean(text);
@@ -1380,9 +1383,10 @@ export function createChatSurface(
         msg.content.some((chunk) => chunk.type === "thinking" && chunk.thinking.trim());
       if (!hasVisibleContent && msg.stopReason !== "error" && msg.stopReason !== "aborted") return nothing;
       return html`
-        <article class="message-row assistant-row ${isStreaming ? "streaming" : ""}" data-index=${index}>
+        <article class="message-row assistant-row ${groupChat ? "group-message" : ""} ${isStreaming ? "streaming" : ""}" data-index=${index}>
+          ${assistantAvatar ? html`<span class="message-avatar assistant-avatar" title=${authored}>${assistantAvatar}</span>` : nothing}
           <div class="assistant-body">
-            ${authored ? html`<div class="assistant-author"><span class="assistant-author-avatar">${botAvatar ?? ""}</span><span>${authored}</span></div>` : nothing}
+            ${authored ? html`<div class="assistant-author">${!groupChat && botAvatar ? html`<span class="assistant-author-avatar">${botAvatar}</span>` : nothing}<span>${authored}</span></div>` : nothing}
             ${showWork ? workBlock(work, isStreaming) : nothing} ${assistantContent(msg, isStreaming, showWork)}
             ${assistantFileList(deliveredFiles)}
             ${msg.stopReason === "error" && msg.errorMessage ? html`<div class="composer-error inline">${msg.errorMessage}</div>` : nothing}
