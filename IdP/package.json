@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "undici": "^8.10.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

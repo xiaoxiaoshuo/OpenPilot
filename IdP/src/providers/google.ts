@@ -2,9 +2,10 @@
  * Google OIDC Provider — Authorization Code + nonce 校验
  * 文档：skills/google-sso-login/SKILL.md
  */
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 import type { IdpConfig } from "../config.ts";
 import type { ProviderUser } from "./github.ts";
+import { proxiedFetch } from "../proxy.ts";
 
 export function googleAuthorizeUrl(
   cfg: IdpConfig,
@@ -31,26 +32,60 @@ interface GoogleTokenResponse {
 
 const GOOGLE_ISSUERS = new Set(["https://accounts.google.com", "accounts.google.com"]);
 
-const googleJwks = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
+const googleJwks = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"), {
+  [customFetch]: (url, options) => proxiedFetch(url, options),
+  timeoutDuration: 60_000,
+  cooldownDuration: 30_000,
+});
+
+function errorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause;
+  if (cause instanceof Error) return `${error.message}: ${cause.message}`;
+  return error.message;
+}
 
 export async function googleExchangeCode(
   cfg: IdpConfig,
   code: string,
   expectedNonce: string,
 ): Promise<ProviderUser> {
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: cfg.googleClientId,
-      client_secret: cfg.googleClientSecret,
-      redirect_uri: cfg.googleCallbackUri,
-      grant_type: "authorization_code",
-    }).toString(),
-  });
-  if (!tokenRes.ok) throw new Error(`google token endpoint HTTP ${tokenRes.status}`);
+  let tokenRes: Response;
+  try {
+    tokenRes = await proxiedFetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: cfg.googleClientId,
+        client_secret: cfg.googleClientSecret,
+        redirect_uri: cfg.googleCallbackUri,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+  } catch (error) {
+    // 代理链路偶发超时：重试一次
+    try {
+      tokenRes = await proxiedFetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: cfg.googleClientId,
+          client_secret: cfg.googleClientSecret,
+          redirect_uri: cfg.googleCallbackUri,
+          grant_type: "authorization_code",
+        }).toString(),
+      });
+    } catch (retryError) {
+      throw new Error(`google token endpoint network request failed: ${errorDetail(retryError)}`);
+    }
+  }
   const body = (await tokenRes.json()) as GoogleTokenResponse;
+  if (!tokenRes.ok) {
+    const reason = body.error_description ?? body.error ?? "unspecified provider error";
+    throw new Error(`google token endpoint HTTP ${tokenRes.status}: ${reason}`);
+  }
   if (!body.id_token) {
     throw new Error(`google token exchange failed: ${body.error_description ?? body.error ?? "no id_token"}`);
   }
