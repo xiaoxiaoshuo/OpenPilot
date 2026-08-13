@@ -358,11 +358,14 @@ interface SessionStateFrame {
   [k: string]: unknown;
 }
 
-function forwardDelivery(frame: { threadRef?: unknown; partial?: unknown }): void {
+function forwardDelivery(frame: { threadRef?: unknown; partial?: unknown; source?: unknown; entrySeq?: unknown }): void {
   const threadRef = typeof frame.threadRef === "string" ? frame.threadRef : "";
   const owner = ownerOfWebThread(threadRef);
   if (!owner) return;
-  const visible = { threadRef, ...(frame.partial === true ? { partial: true } : {}) };
+  const visible: Record<string, unknown> = { threadRef };
+  if (frame.partial === true) visible.partial = true;
+  if (frame.source && typeof frame.source === "object") visible.source = frame.source;
+  if (typeof frame.entrySeq === "number") visible.entrySeq = frame.entrySeq;
   for (const res of deliveryClients.get(owner) ?? []) sseEvent(res, "delivery", visible);
 }
 

@@ -963,6 +963,16 @@ export function subscribeDeliveries(
   es.addEventListener("delivery", (e: MessageEvent) => {
     try {
       const d = JSON.parse(e.data) as { threadRef?: string; partial?: unknown; source?: unknown; entrySeq?: unknown };
+      // eslint-disable-next-line no-console
+      console.log(
+        "[group-chat]",
+        new Date().toISOString().slice(11, 23),
+        "SSE delivery 帧",
+        "thread=" + (d.threadRef?.slice(-8) ?? "-"),
+        "partial=" + (d.partial === true),
+        "source=" + JSON.stringify(d.source ?? "none"),
+        "entrySeq=" + (d.entrySeq ?? "-"),
+      );
       if (typeof d.threadRef === "string" && d.threadRef) {
         onThread({
           threadRef: d.threadRef,
