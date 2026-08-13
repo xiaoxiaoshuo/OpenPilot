@@ -20,6 +20,7 @@ import {
   PinOff,
   Plus,
   RefreshCw,
+  Search,
   SquareTerminal,
   Trash2,
   User,
@@ -118,6 +119,7 @@ let showArchived = false;
 
 let chatsPageScope: string | null = null;
 let chatsPageQuery = "";
+let chatsPageTagQuery = "";
 let chatsPageStatus: ChatBrowseStatus = "active";
 let chatsPageSurface: "all" | "web" | "slack" = "all";
 let chatsPageHost: HTMLElement | null = null;
@@ -134,6 +136,7 @@ export function resetSessionsState(): void {
   showArchived = false;
   chatsPageScope = null;
   chatsPageQuery = "";
+  chatsPageTagQuery = "";
   chatsPageStatus = "active";
   chatsPageSurface = "all";
   chatsPageHost = null;
@@ -466,11 +469,18 @@ export function drawChatsPage(): void {
     .filter((s) => chatsPageSurface === "all" || surfaceOf(s) === chatsPageSurface)
     .filter((s) => (chatsPageScope ? s.scopeId === chatsPageScope : true))
     .filter((s) => !q || chatMatches(s, q))
+    .filter((s) => !chatsPageTagQuery || (s.tags ?? []).some((tag) => tag.toLowerCase().includes(chatsPageTagQuery)))
     .sort((a, b) => activityOf(b) - activityOf(a))
     .map((s) => chatPageRow(s));
   let empty = "No conversations yet — start a new chat.";
   if (sessionsLoading && sessionsState.list.length === 0) empty = "Loading conversations…";
-  else if (chatsPageScope || q || chatsPageStatus !== "active" || chatsPageSurface !== "all") {
+  else if (
+    chatsPageScope ||
+    q ||
+    chatsPageTagQuery ||
+    chatsPageStatus !== "active" ||
+    chatsPageSurface !== "all"
+  ) {
     empty = "No conversations match.";
   }
   render(
@@ -494,11 +504,11 @@ export function drawChatsPage(): void {
       filters: html`<div class="chat-filters">
         <div class="resource-tabs" role="tablist" aria-label="Conversation status">
           ${(
-            [
+                          [
               ["active", t("sessions.active")],
               ["waiting", t("sessions.waiting")],
-              ["archived", t("sessions.archived")],
             ] as const
+
           ).map(
             ([value, label]) =>
               html`<button
@@ -517,6 +527,19 @@ export function drawChatsPage(): void {
               </button>`,
           )}
         </div>
+        <label class="list-search chat-tag-search">
+          ${icon(Search, 15)}
+          <input
+            type="search"
+            aria-label="Search tags"
+            placeholder="Search tags…"
+            .value=${live(chatsPageTagQuery)}
+            @input=${(e: Event) => {
+              chatsPageTagQuery = (e.currentTarget as HTMLInputElement).value.trim().toLowerCase();
+              drawChatsPage();
+            }}
+          />
+        </label>
         <label class="list-select"
           ><span>Surface</span>${fieldSelect({
             compact: true,
@@ -634,6 +657,7 @@ function chatPageRow(s: CoreSession): TemplateResult {
         <span class="list-row-meta">
           ${scopeChip(s.scopeId, s.channelName ?? null)}
           ${surfaceOf(s) === "slack" ? html`<span class="surface surface-slack">${slackLogo(13)}</span>` : nothing}
+          ${(s.tags ?? []).map((tag) => html`<span class="chat-tag-chip">${tag}</span>`)}
           ${readOnly ? html`<span class="ro-lock" title="Read-only">${icon(Lock, 12)}</span>` : nothing}
           <span class="list-row-date">${listWhen(activityOf(s))}</span>
         </span>
