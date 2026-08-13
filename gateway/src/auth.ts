@@ -7,6 +7,7 @@ import { timingSafeEqual } from "node:crypto";
 import { LRUCache } from "lru-cache";
 import { json } from "../../core/chassis/src/http.ts";
 import { buildAuthorizeUrl, exchangeCode, pkcePair, verifyIdToken, type OidcConfig } from "./oidc.ts";
+import { authCopy, otherAuthLocale, resolveAuthLocale, type AuthLocale } from "./auth-copy.ts";
 import {
   clearCookie,
   deriveKey,
@@ -76,16 +77,18 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
   async function login(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", cfg.publicUrl);
     const returnTo = sanitizeReturnTo(url.searchParams.get("returnTo"), cfg.publicUrl);
+    const locale = resolveAuthLocale(url.searchParams.get("lang"), req.headers["accept-language"]);
+    const copy = authCopy(locale);
     const provider = url.searchParams.get("provider");
     if (provider !== "github" && provider !== "google" && provider !== "demo") {
-      return sendLoginPage(res, returnTo, cfg.providers);
+      return sendLoginPage(res, returnTo, cfg.providers, locale);
     }
     if (!cfg.providers[provider]) {
-      return sendLoginPage(res, returnTo, cfg.providers, `Sign-in with ${provider} is not configured.`);
+      return sendLoginPage(res, returnTo, cfg.providers, locale, copy.providerNotConfigured(provider));
     }
     const loginHint = provider === "demo" ? (url.searchParams.get("email") ?? "").trim().toLowerCase() : "";
     if (provider === "demo" && !validEmail(loginHint)) {
-      return sendLoginPage(res, returnTo, cfg.providers, "Enter a valid email address for demo sign-in.");
+      return sendLoginPage(res, returnTo, cfg.providers, locale, copy.invalidDemoEmail);
     }
     const state = randomToken();
     const nonce = randomToken();
@@ -98,6 +101,7 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
       pkceVerifier: verifier,
       returnTo,
       provider,
+      locale,
       iat: now,
       exp: now + cfg.tmpTtlS,
     };
@@ -113,19 +117,21 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
   }
 
   async function callback(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? "/", cfg.publicUrl);
+    const tmp = openTmp(readCookie(req.headers.cookie, TMP_COOKIE), tmpKey, Date.now());
+    const locale = tmp?.locale ?? resolveAuthLocale(url.searchParams.get("lang"), req.headers["accept-language"]);
+    const copy = authCopy(locale);
     const fail = (detail: string): void => {
       res.setHeader("set-cookie", [clearCookie(TMP_COOKIE, "/auth", cfg.secureCookies)]);
-      sendErrorPage(res, "Sign-in failed", detail);
+      sendErrorPage(res, locale, detail);
     };
 
-    const url = new URL(req.url ?? "/", cfg.publicUrl);
-    if (url.searchParams.get("error")) return fail(`identity provider returned: ${url.searchParams.get("error")}`);
+    if (url.searchParams.get("error")) return fail(copy.providerReturnedError);
     const code = url.searchParams.get("code") ?? "";
     const stateParam = url.searchParams.get("state") ?? "";
-    const tmp = openTmp(readCookie(req.headers.cookie, TMP_COOKIE), tmpKey, Date.now());
-    if (!tmp) return fail("login session expired — please try again");
-    if (!code || !stateParam || !safeEqual(stateParam, tmp.state)) return fail("invalid login state");
-    if (!states.consume(stateParam)) return fail("login already used — please try again");
+    if (!tmp) return fail(copy.loginExpired);
+    if (!code || !stateParam || !safeEqual(stateParam, tmp.state)) return fail(copy.invalidState);
+    if (!states.consume(stateParam)) return fail(copy.loginUsed);
 
     let principal: string;
     let name = "";
@@ -137,8 +143,8 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
       principal = email.trim().toLowerCase();
       const rawName = claims.name;
       if (typeof rawName === "string") name = rawName.trim().slice(0, 200);
-    } catch (e) {
-      return fail(e instanceof Error ? e.message : "sign-in failed");
+    } catch {
+      return fail(copy.genericSignInFailure);
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -188,78 +194,76 @@ function safeEqual(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+function authQuery(returnTo: string, locale: AuthLocale, provider?: "github" | "google" | "demo"): string {
+  const params = new URLSearchParams({ returnTo, lang: locale });
+  if (provider) params.set("provider", provider);
+  return `/auth/login?${params.toString()}`;
+}
+
+function authPageCss(): string {
+  return `
+    :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;color:#f7f8fc;background:#070b16;display:grid;place-items:center;overflow-x:hidden}
+    body:before,body:after{content:"";position:fixed;width:38rem;height:38rem;border-radius:50%;filter:blur(72px);opacity:.34;pointer-events:none}body:before{top:-20rem;left:-16rem;background:#2563eb}body:after{right:-18rem;bottom:-22rem;background:#0d9488}
+    main{position:relative;width:min(100%,960px);padding:28px}.shell{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);overflow:hidden;border:1px solid rgba(148,163,184,.22);border-radius:24px;background:rgba(15,23,42,.82);box-shadow:0 28px 90px rgba(0,0,0,.46);backdrop-filter:blur(18px)}
+    .intro{padding:50px 44px;background:linear-gradient(145deg,rgba(37,99,235,.26),rgba(15,23,42,.2) 54%,rgba(13,148,136,.16));border-right:1px solid rgba(148,163,184,.16)}.brand{display:inline-flex;align-items:center;gap:10px;color:#fff;font-weight:750;letter-spacing:-.02em}.brand-mark{display:grid;place-items:center;width:31px;height:31px;border-radius:10px;background:linear-gradient(135deg,#60a5fa,#2dd4bf);color:#082f49;font-size:12px;font-weight:900}.eyebrow{margin:70px 0 12px;color:#93c5fd;font-size:11px;font-weight:800;letter-spacing:.12em}.intro h1{max-width:380px;margin:0;font-size:clamp(30px,4vw,44px);line-height:1.1;letter-spacing:-.05em}.intro p{max-width:360px;margin:18px 0 0;color:#cbd5e1;font-size:15px}.secure{display:flex;gap:8px;align-items:center;margin-top:56px;color:#94a3b8;font-size:12px}.secure:before{content:"✓";display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:rgba(45,212,191,.16);color:#5eead4;font-weight:800}
+    .card{position:relative;padding:34px}.locale{position:absolute;right:24px;top:22px;border:1px solid rgba(148,163,184,.26);border-radius:999px;padding:6px 10px;color:#cbd5e1;background:rgba(30,41,59,.68);font-size:12px;text-decoration:none}.locale:hover{border-color:#60a5fa;color:#fff}.card h2{margin:34px 0 6px;font-size:24px;letter-spacing:-.035em}.card .sub{margin:0 0 26px;color:#94a3b8;font-size:14px}.provider{display:flex;align-items:center;gap:12px;width:100%;margin:10px 0;padding:12px 14px;border:1px solid rgba(148,163,184,.25);border-radius:12px;background:rgba(30,41,59,.62);color:#f8fafc;text-decoration:none;font-weight:650;transition:border-color .15s,transform .15s,background .15s}.provider:hover{border-color:#60a5fa;background:#26334b;transform:translateY(-1px)}.provider-mark{display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:#f8fafc;color:#0f172a;font-size:11px;font-weight:900}.provider.github .provider-mark{background:#111827;color:#fff;border:1px solid #475569}.provider-arrow{margin-left:auto;color:#94a3b8;font-size:17px}.divider{display:flex;align-items:center;gap:10px;margin:18px 0;color:#64748b;font-size:11px}.divider:before,.divider:after{content:"";height:1px;flex:1;background:rgba(148,163,184,.18)}
+    .demo{padding:15px;border:1px solid rgba(45,212,191,.32);border-radius:14px;background:linear-gradient(145deg,rgba(20,184,166,.13),rgba(15,23,42,.4))}.demo-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:14px}.demo-head .provider-mark{background:#5eead4;color:#134e4a}.demo label{display:block;margin-bottom:6px;color:#cbd5e1;font-size:12px;font-weight:650}.demo input{width:100%;padding:10px 11px;border:1px solid rgba(148,163,184,.34);border-radius:9px;background:#0b1220;color:#f8fafc;font:inherit}.demo input:focus{outline:2px solid #2dd4bf;outline-offset:1px}.demo button{width:100%;margin-top:10px;padding:10px 12px;border:0;border-radius:9px;background:#5eead4;color:#134e4a;font:750 14px inherit;cursor:pointer}.demo button:hover{background:#99f6e4}.demo p{margin:9px 0 0;color:#a7c8c8;font-size:12px;line-height:1.45}.notice,.reason{margin:0 0 16px;padding:11px 12px;border-radius:10px;font-size:13px;line-height:1.5}.notice{border:1px solid rgba(251,191,36,.36);background:rgba(120,53,15,.26);color:#fde68a}.reason{border:1px solid rgba(251,113,133,.38);background:rgba(127,29,29,.24);color:#fecdd3}.retry{display:inline-flex;margin-top:18px;color:#93c5fd;font-weight:650;text-decoration:none}.retry:hover{text-decoration:underline}
+    @media(max-width:720px){main{padding:16px}.shell{grid-template-columns:1fr}.intro{padding:28px;border-right:0;border-bottom:1px solid rgba(148,163,184,.16)}.eyebrow{margin:34px 0 9px}.intro h1{font-size:30px}.secure{margin-top:28px}.card{padding:25px}.card h2{margin-top:28px}}
+  `;
+}
+
 function sendLoginPage(
   res: ServerResponse,
   returnTo: string,
   providers: GatewayAuthConfig["providers"],
+  locale: AuthLocale,
   notice = "",
 ): void {
-  const githubHref = `/auth/login?provider=github&returnTo=${encodeURIComponent(returnTo)}`;
-  const googleHref = `/auth/login?provider=google&returnTo=${encodeURIComponent(returnTo)}`;
+  const copy = authCopy(locale);
+  const githubHref = authQuery(returnTo, locale, "github");
+  const googleHref = authQuery(returnTo, locale, "google");
   const buttons = [
-    providers.github ? `<a class="btn gh" href="${githubHref}"><span class="dot">GH</span> Continue with GitHub</a>` : "",
-    providers.google ? `<a class="btn gg" href="${googleHref}"><span class="dot">G</span> Continue with Google</a>` : "",
+    providers.github
+      ? `<a class="provider github" href="${githubHref}"><span class="provider-mark">GH</span><span>${copy.github}</span><span class="provider-arrow">→</span></a>`
+      : "",
+    providers.google
+      ? `<a class="provider google" href="${googleHref}"><span class="provider-mark">G</span><span>${copy.google}</span><span class="provider-arrow">→</span></a>`
+      : "",
   ].join("");
   const demoCard = providers.demo
     ? `<form class="demo" method="get" action="/auth/login">
-        <input type="hidden" name="provider" value="demo"><input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
-        <div class="demo-head"><span class="dot">DE</span><strong>Demo sign-in</strong></div>
-        <label for="demo-email">Email address</label>
-        <input id="demo-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="demo@example.com" required maxlength="254">
-        <button type="submit">Continue as demo user</button>
-        <p>No password or registration required. Demo access may be limited by your administrator.</p>
+        <input type="hidden" name="provider" value="demo"><input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}"><input type="hidden" name="lang" value="${locale}">
+        <div class="demo-head"><span class="provider-mark">DE</span><strong>${copy.demoTitle}</strong></div>
+        <label for="demo-email">${copy.demoEmailLabel}</label>
+        <input id="demo-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="${copy.demoEmailPlaceholder}" required maxlength="254">
+        <button type="submit">${copy.demoContinue}</button>
+        <p>${copy.demoHint}</p>
       </form>`
     : "";
-  const content = demoCard || buttons ? `${demoCard}${buttons}` : `<p class="notice">No sign-in provider is configured. Ask your administrator to configure GitHub or Google OAuth.</p>`;
-  const noticeHtml = notice ? `<p class="notice">${escapeHtml(notice)}</p>` : "";
-  const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Sign in · OpenPilot</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  body{margin:0;background:#0f1117;color:#e6e6e6;font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;min-height:100vh}
-  main{margin:auto;padding:24px;width:100%;max-width:400px}
-  .card{background:#1a1d27;border:1px solid #2a2e3d;border-radius:14px;padding:36px 30px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
-  h1{font-size:22px;margin:0 0 6px}
-  p.sub{color:#9aa0ae;margin:0 0 26px;font-size:14px}
-  a.btn{display:flex;align-items:center;gap:12px;margin:10px 0;padding:12px 16px;border-radius:10px;text-decoration:none;color:#fff;font-weight:600;font-size:15px;border:1px solid #2a2e3d;background:#22263a}
-  a.btn:hover{border-color:#3b82f6;background:#262b44}
-  a.btn .dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
-  .gh{background:#24292e}.gh .dot{background:#333}.gg{background:#1a73e8}.gg .dot{background:#fff;color:#1a73e8}
-  .demo{margin:0 0 16px;padding:16px;border:1px solid #285e61;border-radius:12px;background:linear-gradient(135deg,#102b31,#162534)}
-  .demo-head{display:flex;align-items:center;gap:9px;margin-bottom:12px}.demo .dot{width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:#2dd4bf;color:#042f2e;font-size:10px;font-weight:800}
-  .demo label{display:block;margin:0 0 5px;color:#cbd5e1;font-size:13px;font-weight:600}.demo input{box-sizing:border-box;width:100%;border:1px solid #3f5964;border-radius:8px;padding:10px 11px;background:#0f1b25;color:#f8fafc;font:inherit}.demo input:focus{outline:2px solid #2dd4bf;outline-offset:1px}
-  .demo button{width:100%;margin-top:10px;border:0;border-radius:8px;padding:10px 12px;background:#14b8a6;color:#042f2e;font:600 14px inherit;cursor:pointer}.demo button:hover{background:#2dd4bf}.demo p{margin:8px 0 0;color:#a7c8c8;font-size:12px;line-height:1.45}
-  .notice{color:#fbbf24;background:#2a2312;border:1px solid #5c4a1e;border-radius:10px;padding:10px 12px;font-size:14px}
-</style>
-<main><div class="card">
-  <h1>Sign in to OpenPilot</h1>
-  <p class="sub">Choose how you'd like to continue</p>
-  ${noticeHtml}
-  ${content}
-</div></main></html>`;
-  res.writeHead(200, {
-    "content-type": "text/html; charset=utf-8",
-    "content-length": Buffer.byteLength(html),
-    "cache-control": "no-store",
-    "x-frame-options": "DENY",
-    "x-robots-tag": "noindex, nofollow",
-  });
-  res.end(html);
+  const providersHtml = demoCard || buttons ? `${demoCard}${demoCard && buttons ? '<div class="divider">OAuth</div>' : ""}${buttons}` : `<p class="notice">${copy.noProvider}</p>`;
+  const noticeHtml = notice ? `<p class="notice" role="status">${escapeHtml(notice)}</p>` : "";
+  const switchHref = authQuery(returnTo, otherAuthLocale(locale));
+  const html = `<!doctype html><html lang="${copy.htmlLang}"><meta charset="utf-8"><title>${copy.signInTitle} · OpenPilot</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><style>${authPageCss()}</style>
+<main><div class="shell"><section class="intro"><div class="brand"><span class="brand-mark">OP</span><span>OpenPilot</span></div><p class="eyebrow">${copy.brandKicker}</p><h1>${copy.signInTitle}</h1><p>${copy.signInSubtitle}</p><div class="secure">${copy.secureNote}</div></section>
+<section class="card" aria-label="${copy.signInTitle}"><a class="locale" href="${switchHref}" aria-label="${copy.languageLabel}">${copy.switchLanguage}</a><h2>${copy.signInTitle}</h2><p class="sub">${copy.signInSubtitle}</p>${noticeHtml}${providersHtml}</section></div></main></html>`;
+  sendAuthHtml(res, 200, html);
 }
 
-function sendErrorPage(res: ServerResponse, heading: string, detail: string): void {
-  const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${heading}</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  body{margin:0;background:#0f1117;color:#e6e6e6;font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;min-height:100vh}
-  main{margin:auto;padding:24px;width:100%;max-width:400px}
-  .card{background:#1a1d27;border:1px solid #2a2e3d;border-radius:14px;padding:36px 30px}
-  h1{font-size:20px;margin:0 0 10px}
-  .reason{color:#fca5a5;background:#2a1218;border:1px solid #5b1c26;border-radius:10px;padding:12px 14px;font-size:14px}
-  a{color:#60a5fa}
-</style>
-<main><div class="card"><h1>${escapeHtml(heading)}</h1><p class="reason">${escapeHtml(detail)}</p>
-<p><a href="/auth/login">Try signing in again</a></p></div></main></html>`;
-  res.writeHead(400, {
+function sendErrorPage(res: ServerResponse, locale: AuthLocale, detail: string): void {
+  const copy = authCopy(locale);
+  const retryHref = authQuery("/", locale);
+  const switchHref = authQuery("/", otherAuthLocale(locale));
+  const html = `<!doctype html><html lang="${copy.htmlLang}"><meta charset="utf-8"><title>${copy.errorTitle} · OpenPilot</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><style>${authPageCss()}</style>
+<main><div class="shell"><section class="intro"><div class="brand"><span class="brand-mark">OP</span><span>OpenPilot</span></div><p class="eyebrow">${copy.brandKicker}</p><h1>${copy.errorTitle}</h1><p>${copy.signInSubtitle}</p><div class="secure">${copy.secureNote}</div></section>
+<section class="card" aria-label="${copy.errorTitle}"><a class="locale" href="${switchHref}" aria-label="${copy.languageLabel}">${copy.switchLanguage}</a><h2>${copy.errorTitle}</h2><p class="sub">OpenPilot</p><p class="reason" role="alert">${escapeHtml(detail)}</p><a class="retry" href="${retryHref}">← ${copy.retry}</a></section></div></main></html>`;
+  sendAuthHtml(res, 400, html);
+}
+
+function sendAuthHtml(res: ServerResponse, status: number, html: string): void {
+  res.writeHead(status, {
     "content-type": "text/html; charset=utf-8",
     "content-length": Buffer.byteLength(html),
     "cache-control": "no-store",

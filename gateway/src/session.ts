@@ -46,6 +46,7 @@ export interface TmpClaims {
   pkceVerifier: string;
   returnTo: string;
   provider: string;
+  locale?: "zh-CN" | "en";
   iat: number;
   exp: number;
 }
