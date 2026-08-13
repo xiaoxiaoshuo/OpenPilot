@@ -2,7 +2,7 @@
 
 > 简化版在线聊天应用 · 多用户认证 · 对话管理 · AI 自动回复 · 群组对话
 
-**📺 系统演示录制**：https://meeting.tencent.com/crm/KPXnz4DWfe
+**🎬 演示录制 · 欢迎使用 OpenPilot**：https://meeting.tencent.com/crm/KPXnz4DWfe
 
 ## 项目介绍
 
