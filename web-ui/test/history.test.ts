@@ -342,6 +342,33 @@ const MODEL = { id: "m", api: "anthropic", provider: "anthropic" } as unknown as
   typeof entriesToMessages
 >[1];
 
+test("streaming bot draft preserves bot identity and clears its live marker on completion", () => {
+  const draft: SessionEntry = {
+    type: "assistant",
+    payload: { text: "正在为您", author: "客服机器人", bot: "support", avatar: "headset", streaming: true },
+    createdAt: 100,
+    seq: 1,
+  };
+  const live = entriesToMessages([draft], MODEL)[0] as {
+    content: Array<{ text?: string }>;
+    author?: string;
+    bot?: string;
+    avatar?: string;
+    streaming?: boolean;
+  };
+  assert.equal(live.content[0]?.text, "正在为您");
+  assert.equal(live.author, "客服机器人");
+  assert.equal(live.bot, "support");
+  assert.equal(live.avatar, "headset");
+  assert.equal(live.streaming, true);
+
+  (draft.payload as { text: string; streaming: boolean }).text = "正在为您查询订单进度。";
+  (draft.payload as { streaming: boolean }).streaming = false;
+  const complete = entriesToMessages([draft], MODEL)[0] as { content: Array<{ text?: string }>; streaming?: boolean };
+  assert.equal(complete.content[0]?.text, "正在为您查询订单进度。");
+  assert.equal(complete.streaming, undefined);
+});
+
 test("tool entries are folded into the following assistant reply's work block", () => {
   const entries: SessionEntry[] = [
     { type: "user", payload: { text: "hi" }, createdAt: 100 },

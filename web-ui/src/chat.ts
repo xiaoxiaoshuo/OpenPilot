@@ -1020,7 +1020,12 @@ export function createChatSurface(
     const inheritedOffset = chatState.inheritedExpanded ? chatState.inheritedMessages.length : 0;
     if (messages.length) {
       messageContent = messages.map((m, i) =>
-        settledChatMessage(m, i - inheritedOffset, agent.state.isStreaming && m === agent.state.streamingMessage),
+        settledChatMessage(
+          m,
+          i - inheritedOffset,
+          (agent.state.isStreaming && m === agent.state.streamingMessage) ||
+            Boolean((m as unknown as { streaming?: boolean }).streaming),
+        ),
       );
     } else if (isNewUser) {
       messageContent = welcomeGreeting();

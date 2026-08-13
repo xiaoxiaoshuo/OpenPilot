@@ -65,8 +65,8 @@ export function ensureDeliveryStream(): void {
   if (deliveryStreamOpen) return;
   deliveryStreamOpen = true;
   subscribeDeliveries(
-    (threadRef) => {
-      void refreshSessions({ silent: true });
+    ({ threadRef, partial }) => {
+      if (!partial) void refreshSessions({ silent: true });
       for (const conv of live) conv.onDelivery(threadRef);
     },
     (event) => {
