@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Search,
   SquareTerminal,
+  Trash2,
   User,
   Users,
   X,
@@ -38,6 +39,7 @@ import {
   TAIL_TURNS,
   type TranscriptPage,
   updateSession,
+  deleteSession,
   type PendingApproval,
   type CoreProject,
   type CoreSession,
@@ -48,6 +50,7 @@ import {
   chatBrowseStatusMatches,
   bumpActivity,
   groupProjectSessions,
+  nextSessionAfterRemoval,
   recencyGroup,
   recentProjectSeeds,
   reconcileSessions,
@@ -72,7 +75,7 @@ import {
 } from "./contexts";
 import { groupDmLabel, groupDmText } from "./group-dm-label";
 import { transcriptModel } from "./model-options";
-import { appState, closeSidebarOnNarrowView, renderSidebarTop, showMainEmpty } from "./shell";
+import { appState, closeSidebarOnNarrowView, renderSidebarTop, showMainEmpty, syncUrlFromState } from "./shell";
 import { allConversations, mainConversation } from "./conversations";
 import type { Conversation } from "./conv-types";
 import {
@@ -112,6 +115,7 @@ let recentContextsRequest: Promise<void> | null = null;
 const RECENT_CONTEXT_MAX_AGE_MS = 30_000;
 let renameDraft = "";
 const refreshingTitleIds = new Set<string>();
+const deletingSessionIds = new Set<string>();
 let chatsPageScope: string | null = null;
 let chatsPageQuery = "";
 let chatsPageTagQuery = "";
@@ -861,6 +865,15 @@ function sessionMenuPopover(s: CoreSession): TemplateResult {
       >
         ${icon(RefreshCw, 15)}<span>${refreshingTitle ? t("sessions.refreshingTitle") : t("sessions.refreshTitle")}</span>
       </button>
+      <button
+        class="session-menu-option danger"
+        type="button"
+        role="menuitem"
+        ?disabled=${deletingSessionIds.has(s.id)}
+        @click=${() => void requestDeleteSession(s)}
+      >
+        ${icon(Trash2, 15)}<span>${t("sessions.delete")}</span>
+      </button>
       ${sessionColorRow(s)}
     </div>
   `;
@@ -1017,6 +1030,40 @@ async function commitRename(s: CoreSession): Promise<void> {
   const desired = !next || next === defaultSessionTitle(s) ? null : next;
   if (desired === null && !resolved) return;
   await persistSessionPatch(s.id, { title: desired });
+}
+
+async function requestDeleteSession(s: CoreSession): Promise<void> {
+  if (!s.id || deletingSessionIds.has(s.id)) return;
+  if (
+    !window.confirm(
+      `${t("sessions.deleteConversationTitle")}\n\n${t("sessions.deleteConversationBody", { name: sessionTitle(s) })}`,
+    )
+  )
+    return;
+
+  const visible = visibleSessions();
+  const successor = nextSessionAfterRemoval(visible, s.id);
+  const deletingCurrent = isActiveRow(s);
+  deletingSessionIds.add(s.id);
+  sessionsState.openMenuId = null;
+  renderList();
+
+  try {
+    await deleteSession(s.id);
+    sessionsState.list = sessionsState.list.filter((session) => session.id !== s.id);
+    if (deletingCurrent) {
+      showMainEmpty(t("sessions.noConversations"));
+      mainConversation().resetChatState();
+      syncUrlFromState();
+      if (successor) await openSession(successor);
+    }
+    if (appState.currentView === "chats" && !splitState.active) drawChatsPage();
+  } catch {
+    sessionsNotice = t("sessions.deleteFailed");
+  } finally {
+    deletingSessionIds.delete(s.id);
+    renderList();
+  }
 }
 
 function setPinned(s: CoreSession, pinned: boolean): void {

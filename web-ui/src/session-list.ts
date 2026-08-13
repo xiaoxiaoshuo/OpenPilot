@@ -21,6 +21,15 @@ export function activityOf(s: CoreSession): number {
 
 export type ChatBrowseStatus = "active" | "waiting";
 
+export function nextSessionAfterRemoval<T extends Pick<CoreSession, "id">>(
+  sessions: readonly T[],
+  removedId: string,
+): T | null {
+  const index = sessions.findIndex((session) => session.id === removedId);
+  if (index < 0) return null;
+  return sessions[index + 1] ?? sessions[index - 1] ?? null;
+}
+
 export function splitPinned<T extends Pick<CoreSession, "pinned">>(sessions: readonly T[]): { pinned: T[]; rest: T[] } {
   const pinned: T[] = [];
   const rest: T[] = [];

@@ -78,6 +78,10 @@ const zh: Record<string, string> = {
   "sessions.refreshTitle": "刷新标题",
   "sessions.refreshingTitle": "刷新中",
   "sessions.delete": "删除",
+  "sessions.deleteConversationTitle": "删除会话？",
+  "sessions.deleteConversationBody": "这将永久删除“{name}”及其消息，无法撤销。",
+  "sessions.deleteConversationAction": "删除会话",
+  "sessions.deleteFailed": "删除会话失败。",
 
   // 定时任务页
   "crons.title": "定时任务",
@@ -328,6 +332,10 @@ const en: Record<string, string> = {
   "sessions.refreshTitle": "Refresh title",
   "sessions.refreshingTitle": "Refreshing title",
   "sessions.delete": "Delete",
+  "sessions.deleteConversationTitle": "Delete conversation?",
+  "sessions.deleteConversationBody": "This permanently deletes “{name}” and its messages. This action cannot be undone.",
+  "sessions.deleteConversationAction": "Delete conversation",
+  "sessions.deleteFailed": "Couldn't delete the conversation.",
 
   "crons.title": "Crons",
   "crons.yours": "Yours",

@@ -457,6 +457,16 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     });
   }
 
+  // ── 会话 DELETE（永久删除，需 scope 访问权限）──
+  if (method === "DELETE" && path.startsWith("/v1/sessions/")) {
+    const id = decodeURIComponent(path.slice("/v1/sessions/".length).split("/")[0] ?? "");
+    const s = store.getSession(id);
+    if (!s) return send(res, 404, { error: "not_found" });
+    if (!principalCanAccessScope(principal, s.scopeId)) return send(res, 404, { error: "not_found" });
+    store.deleteSession(id);
+    return send(res, 200, { ok: true, id });
+  }
+
   // ── 会话 PATCH（title/archived/pinned/color/tags）──
   if (method === "PATCH" && path.startsWith("/v1/sessions/")) {
     const rest = path.slice("/v1/sessions/".length);
