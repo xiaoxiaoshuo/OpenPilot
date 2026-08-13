@@ -103,6 +103,7 @@ const authCfg: GatewayAuthConfig = {
   providers: {
     github: providerConfigured(process.env.GITHUB_CLIENT_ID, process.env.GITHUB_CLIENT_SECRET),
     google: providerConfigured(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET),
+    demo: process.env.IDP_DEMO_LOGIN_ENABLED?.trim().toLowerCase() === "true" && process.env.NODE_ENV !== "production",
   },
 };
 

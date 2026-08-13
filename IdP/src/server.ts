@@ -20,6 +20,7 @@ import type { SigningKey } from "./keys.ts";
 import { mintIdToken, pkceMatches, safeEqual, subjectFor, TokenSigner, type AuthRequest } from "./tokens.ts";
 import { githubAuthorizeUrl, githubExchangeCode } from "./providers/github.ts";
 import { googleAuthorizeUrl, googleExchangeCode } from "./providers/google.ts";
+import { demoIdentity } from "./providers/demo.ts";
 import { problemPage, PAGE_CSP } from "./pages.ts";
 
 const MAX_FORM_BYTES = 100_000;
@@ -64,11 +65,12 @@ function readAuthorizeRequest(
   const scope = params.get("scope") ?? "openid";
   if (!scope.split(/\s+/).includes("openid")) return { problem: "This sign-in request must ask for the openid scope." };
     const provider = params.get("provider");
-  if (provider !== "github" && provider !== "google")
-    return { problem: "This sign-in request must name a provider (github or google)." };
+  if (provider !== "github" && provider !== "google" && provider !== "demo")
+    return { problem: "This sign-in request must name a provider (github, google, or demo)." };
   if (
     (provider === "github" && (!cfg.githubClientId || !cfg.githubClientSecret)) ||
-    (provider === "google" && (!cfg.googleClientId || !cfg.googleClientSecret))
+    (provider === "google" && (!cfg.googleClientId || !cfg.googleClientSecret)) ||
+    (provider === "demo" && !cfg.demoLoginEnabled)
   )
     return { problem: `This provider (${provider}) is not configured on the identity provider.` };
   return { request: { clientId, redirectUri, state, nonce, codeChallenge, scope } };
@@ -107,6 +109,34 @@ export function createIdpHandler(deps: {
     return p;
   };
 
+  async function issueAuthorizationCode(
+    res: ServerResponse,
+    request: AuthRequest,
+    provider: ProviderKind,
+    identity: { providerSub: string; principal: string; name: string },
+  ): Promise<void> {
+    const codeToken = await signer.sealCode(
+      {
+        clientId: request.clientId,
+        redirectUri: request.redirectUri,
+        state: request.state,
+        scope: request.scope,
+        nonce: request.nonce,
+        codeChallenge: request.codeChallenge,
+        principal: identity.principal,
+        providerSub: identity.providerSub,
+        provider,
+      },
+      cfg.codeTtlS,
+      now(),
+    );
+    const destination = new URL(request.redirectUri);
+    destination.searchParams.set("code", codeToken.token);
+    destination.searchParams.set("state", request.state);
+    res.writeHead(302, { location: destination.toString(), "cache-control": "no-store" });
+    res.end();
+  }
+
   async function authorize(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", "http://idp.local");
     const params = url.searchParams;
@@ -121,6 +151,18 @@ export function createIdpHandler(deps: {
       );
     const provider = params.get("provider") as ProviderKind;
     const request = parsed.request;
+    if (provider === "demo") {
+      const email = params.get("login_hint") ?? "";
+      if (!validEmail(email)) {
+        return problem(res, 400, "Demo sign-in needs an email address", "Enter a valid email address and try again.");
+      }
+      const identity = demoIdentity(email);
+      if (!emailAllowed(cfg, identity.principal)) {
+        return problem(res, 403, "Demo sign-in is not allowed", "Your administrator has not allowed this email address.");
+      }
+      return issueAuthorizationCode(res, request, provider, identity);
+    }
+
     // 保存 pending（按 state 索引），回调时凭 state 取回 nonce / codeChallenge / redirectUri
     pending.set(request.state, { request, provider, at: now() });
     prunePending();
@@ -169,26 +211,7 @@ export function createIdpHandler(deps: {
       return fail("your administrator has not allowed this email address");
     }
 
-    const codeToken = await signer.sealCode(
-      {
-        clientId: pendingReq.request.clientId,
-        redirectUri: pendingReq.request.redirectUri,
-        state: pendingReq.request.state,
-        scope: pendingReq.request.scope,
-        nonce: pendingReq.request.nonce,
-        codeChallenge: pendingReq.request.codeChallenge,
-        principal: identity.principal,
-        providerSub: identity.providerSub,
-        provider,
-      },
-      cfg.codeTtlS,
-      now(),
-    );
-    const destination = new URL(pendingReq.request.redirectUri);
-    destination.searchParams.set("code", codeToken.token);
-    destination.searchParams.set("state", pendingReq.request.state);
-    res.writeHead(302, { location: destination.toString(), "cache-control": "no-store" });
-    res.end();
+    return issueAuthorizationCode(res, pendingReq.request, provider, identity);
   }
 
   async function token(req: IncomingMessage, res: ServerResponse): Promise<void> {

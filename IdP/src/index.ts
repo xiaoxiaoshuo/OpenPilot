@@ -62,7 +62,7 @@ export async function startServer(): Promise<void> {
   });
   server.listen(PORT, () => {
     console.log(
-      `[idp] OIDC provider on http://localhost:${PORT} (issuer ${CFG.issuer}, github=${CFG.githubClientId ? "ok" : "missing"}, google=${CFG.googleClientId ? "ok" : "missing"})`,
+      `[idp] OIDC provider on http://localhost:${PORT} (issuer ${CFG.issuer}, github=${CFG.githubClientId ? "ok" : "missing"}, google=${CFG.googleClientId ? "ok" : "missing"}, demo=${CFG.demoLoginEnabled ? "enabled" : "disabled"})`,
     );
   });
 }

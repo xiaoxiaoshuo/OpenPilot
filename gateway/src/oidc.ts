@@ -25,7 +25,7 @@ export function pkcePair(): { verifier: string; challenge: string } {
 
 export function buildAuthorizeUrl(
   cfg: OidcConfig,
-  args: { state: string; nonce: string; challenge: string; provider: string },
+  args: { state: string; nonce: string; challenge: string; provider: string; loginHint?: string },
 ): string {
   const u = new URL(cfg.authEndpoint);
   u.searchParams.set("response_type", "code");
@@ -37,6 +37,7 @@ export function buildAuthorizeUrl(
   u.searchParams.set("code_challenge", args.challenge);
   u.searchParams.set("code_challenge_method", "S256");
   u.searchParams.set("provider", args.provider);
+  if (args.loginHint) u.searchParams.set("login_hint", args.loginHint);
   return u.toString();
 }
 
