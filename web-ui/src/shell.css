@@ -4808,6 +4808,25 @@ a.chat-row-open {
   flex: 1;
   margin-top: 4px;
 }
+.chat-tag-search {
+  flex: 0 1 220px;
+  margin: 0;
+}
+.chat-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 150px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .chat-row {
   display: flex;
   padding: 0;
@@ -4854,6 +4873,9 @@ a.chat-row-open {
   .chat-filters {
     align-items: stretch;
     flex-direction: column;
+  }
+  .chat-tag-search {
+    flex-basis: auto;
   }
 }
 @media (hover: none) {
