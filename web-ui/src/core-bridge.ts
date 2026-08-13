@@ -935,6 +935,8 @@ export interface SessionStateEvent {
 export interface DeliveryEvent {
   threadRef: string;
   partial: boolean;
+  source?: { kind: "primary" } | { kind: "bot"; botId: string };
+  entrySeq?: number;
 }
 
 export function subscribeDeliveries(
@@ -960,8 +962,15 @@ export function subscribeDeliveries(
   });
   es.addEventListener("delivery", (e: MessageEvent) => {
     try {
-      const d = JSON.parse(e.data) as { threadRef?: string; partial?: unknown };
-      if (typeof d.threadRef === "string" && d.threadRef) onThread({ threadRef: d.threadRef, partial: d.partial === true });
+      const d = JSON.parse(e.data) as { threadRef?: string; partial?: unknown; source?: unknown; entrySeq?: unknown };
+      if (typeof d.threadRef === "string" && d.threadRef) {
+        onThread({
+          threadRef: d.threadRef,
+          partial: d.partial === true,
+          source: (d.source as DeliveryEvent["source"]) ?? undefined,
+          entrySeq: typeof d.entrySeq === "number" ? d.entrySeq : undefined,
+        });
+      }
     } catch (err) {
       swallow("web-ui: handle delivery nudge", err);
     }

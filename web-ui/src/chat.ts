@@ -504,7 +504,12 @@ export function createChatSurface(
       }
     });
   }
-  function onDelivery(threadRef: string, partial = false): void {
+  function onDelivery(
+    threadRef: string,
+    partial = false,
+    _source?: { kind: "primary" } | { kind: "bot"; botId: string },
+    _entrySeq?: number,
+  ): void {
     const ro = readOnlyView;
     if (ro && threadRef === ro.threadRef) {
       void fetchTranscript(ro.id, ro.anchorSeq !== null ? { sinceSeq: ro.anchorSeq } : { tailTurns: TAIL_TURNS })
@@ -526,13 +531,15 @@ export function createChatSurface(
     }
     const agent = chatState.agent;
     if (!agent || threadRef !== chatState.threadRef) return;
-    if (agent.state.isStreaming && partial) {
-      // 主 agent 流式期间的 partial delivery 先记下，agent_end 后补刷新
+    // 主 agent 的 partial delivery 仅用于主 agent 自身的打字机流式（SSE 通道），
+    // 不需要触发整表刷新，否则会打断主 agent 的流式体验。
+    if (partial && _source?.kind !== "bot") {
       pendingDeliveryRefresh = true;
       return;
     }
-    // 非 partial（bot 完成投递）或非流式：直接（串行）刷新；完成投递强制绕过 isStreaming
-    scheduleTranscriptRefresh(agent, !partial);
+    // 附加机器人的任何投递（草稿建立 / partial / 完成）都强制整表刷新：
+    // 主 agent 现在也有草稿 entry，force 刷新能同时渲染「主 agent + 各 bot」而不会丢主 agent 内容。
+    scheduleTranscriptRefresh(agent, true);
   }
 
   function resumeIfIdle(): void {

@@ -79,8 +79,26 @@ function pushSessionState(threadRef: string, sessionId: string, state: "working"
   for (const res of [...sseClients]) sseWrite(res, "session_state", frame);
 }
 
-function pushDelivery(threadRef: string, partial = false): void {
-  const frame = { threadRef, ...(partial ? { partial: true } : {}) };
+interface DeliverySourcePrimary {
+  kind: "primary";
+}
+interface DeliverySourceBot {
+  kind: "bot";
+  botId: string;
+}
+export type DeliverySource = DeliverySourcePrimary | DeliverySourceBot;
+
+export interface DeliveryOptions {
+  partial?: boolean;
+  source?: DeliverySource;
+  entrySeq?: number;
+}
+
+function pushDelivery(threadRef: string, opts: DeliveryOptions = {}): void {
+  const frame: Record<string, unknown> = { threadRef };
+  if (opts.partial) frame.partial = true;
+  if (opts.source) frame.source = opts.source;
+  if (opts.entrySeq !== undefined) frame.entrySeq = opts.entrySeq;
   for (const res of [...sseClients]) sseWrite(res, "delivery", frame);
 }
 
@@ -235,6 +253,7 @@ function runResult(run: Run): Record<string, unknown> {
 // ───────────────────────── 群组机器人（主 agent 协调者模式）─────────────────────────
 
 const DEFAULT_PRIMARY_NAME = "群助手";
+const DEFAULT_PRIMARY_AVATAR = "🤖";
 const MAX_SUMMON_PER_TURN = 2;
 
 /** summon_bot 工具定义（OpenAI 兼容，DeepSeek function calling） */
@@ -273,6 +292,12 @@ function primaryNameFor(session: StoredSession): string {
   return project?.botConfig?.primaryName?.trim() || DEFAULT_PRIMARY_NAME;
 }
 
+/** 群组主 agent 头像（写死默认 🤖，后续可扩展为 botConfig.primaryAvatar） */
+function primaryAvatarFor(session: StoredSession): string {
+  const project = projectForScope(session.scopeId);
+  return (project?.botConfig as { primaryAvatar?: string } | undefined)?.primaryAvatar?.trim() || DEFAULT_PRIMARY_AVATAR;
+}
+
 /** 群组协作块：渲染 enabled 机器人的能力/性格（配置变了提示词跟着变） */
 function groupCoordinationSystem(bots: BotProfile[]): string {
   const roster = bots
@@ -286,6 +311,7 @@ function groupCoordinationSystem(bots: BotProfile[]): string {
     "",
     "规则：",
     "- 用户问题对应某机器人的专长、或需要多角度回答时，调用 summon_bot（可一次多个）",
+    "- 用户问题属于某机器人明确专长（退货/售后/退款/物流/订单→客服；部署/报错/代码→技术）时，直接调用 summon_bot 补充专业解答，不要反问“是否需要召唤”",
     "- 主回答始终由你完成，不要用 summon 代替你自己的回答",
     "- 宁缺毋滥：用户只是表达感谢、确认、闲聊，或问题你已经能完整回答时，绝不 summon",
     "- 不要为了展示功能而召唤机器人",
@@ -1128,8 +1154,39 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
   const system = groupBots.length ? baseSystem + groupCoordinationSystem(groupBots) : baseSystem;
   const tools = groupBots.length ? [summonBotTool] : undefined;
 
+  // 群组：主 agent 也写流式草稿 entry（与附加机器人同构），使多机器人并行流式时 force 刷新不丢主 agent 内容。
+  // 单聊保持「完成后写 entry」，不影响 SSE 打字机体验。
+  let draft: Entry | null = null;
+  if (isGroup) {
+    const at0 = Date.now();
+    const d: Entry = {
+      seq: 0,
+      parentSeq: null,
+      type: "assistant",
+      payload: {
+        text: "",
+        author: primaryNameFor(session),
+        avatar: primaryAvatarFor(session),
+        streaming: true,
+      },
+      createdAt: at0,
+    };
+    draft = d;
+    await withSessionLock(session.id, async () => {
+      d.seq = session.entries.length + 1;
+      session.entries.push(d);
+      session.messages += 1;
+      session.lastActivityAt = at0;
+      store.patchSession(session.id, { entries: session.entries, messages: session.messages, lastActivityAt: at0 });
+    });
+    pushDelivery(session.threadRef, { source: { kind: "primary" }, entrySeq: d.seq });
+  }
+  const draftEntry: Entry | null = draft;
+
   let text: string;
   let toolCalls: ToolCall[] | undefined;
+  let lastPartialAt = 0;
+  let persistedPartial = "";
   const ac = new AbortController();
   run.abortController = ac;
   try {
@@ -1141,6 +1198,16 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
       signal: ac.signal,
       onPartial: (full) => {
         run.partial = full;
+        const d = draftEntry;
+        if (!d) return;
+        const now = Date.now();
+        if (full === persistedPartial || now - lastPartialAt < BOT_PARTIAL_DELIVERY_MS) return;
+        persistedPartial = full;
+        lastPartialAt = now;
+        (d.payload as { text?: string }).text = full;
+        session.lastActivityAt = now;
+        store.patchSession(session.id, { entries: session.entries, lastActivityAt: now });
+        pushDelivery(session.threadRef, { partial: true, source: { kind: "primary" }, entrySeq: d.seq });
       },
     });
     text = result.text;
@@ -1148,10 +1215,18 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
   } catch (e) {
     // abort 期间的结果丢弃（qm userAborted 语义）
     if (aborted()) {
+      if (draftEntry) {
+        await withSessionLock(session.id, async () => {
+          session.entries = session.entries.filter((item) => item !== draftEntry);
+          session.messages = Math.max(0, session.messages - 1);
+          store.patchSession(session.id, { entries: session.entries, messages: session.messages });
+        });
+      }
       run.status = "failed";
       run.finishedAt = Date.now();
       run.error = "aborted";
       pushSessionState(session.threadRef, session.id, "idle", Date.now());
+      pushDelivery(session.threadRef, { source: { kind: "primary" } });
       enqueueDelivery(session.threadRef);
       return;
     }
@@ -1159,6 +1234,10 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
     run.finishedAt = Date.now();
     run.error = e instanceof Error ? e.message : "assistant failed";
     await withSessionLock(session.id, async () => {
+      if (draftEntry) {
+        session.entries = session.entries.filter((item) => item !== draftEntry);
+        session.messages = Math.max(0, session.messages - 1);
+      }
       const errorEntry: Entry = {
         seq: session.entries.length + 1,
         parentSeq: null,
@@ -1167,44 +1246,66 @@ async function runAssistant(session: StoredSession, run: Run, model: string): Pr
         createdAt: Date.now(),
       };
       session.entries.push(errorEntry);
-      store.patchSession(session.id, { entries: session.entries, messages: session.messages + 1 });
+      session.messages += 1;
+      store.patchSession(session.id, { entries: session.entries, messages: session.messages });
     });
     pushSessionState(session.threadRef, session.id, "idle", Date.now());
+    pushDelivery(session.threadRef, { source: { kind: "primary" } });
     enqueueDelivery(session.threadRef);
     return;
   }
   // 回复完成后仍被 abort：丢弃结果（qm：abort 落在生成完成后不落库）
   if (aborted()) {
+    if (draftEntry) {
+      await withSessionLock(session.id, async () => {
+        session.entries = session.entries.filter((item) => item !== draftEntry);
+        session.messages = Math.max(0, session.messages - 1);
+        store.patchSession(session.id, { entries: session.entries, messages: session.messages });
+      });
+    }
     run.status = "failed";
     run.finishedAt = Date.now();
     run.error = "aborted";
     pushSessionState(session.threadRef, session.id, "idle", Date.now());
+    pushDelivery(session.threadRef, { source: { kind: "primary" } });
     enqueueDelivery(session.threadRef);
     return;
   }
   const at = Date.now();
+  // 主 agent 只调用 summon_bot 而未输出正文时，给一个明确文案（避免空消息）。
+  if (!text.trim() && toolCalls?.length) {
+    text = "我来召唤机器人帮你补充解答这个问题。";
+  }
   await withSessionLock(session.id, async () => {
-    const payload: Record<string, unknown> = { text };
-    if (isGroup) payload.author = primaryNameFor(session);
-    session.entries.push({
-      seq: session.entries.length + 1,
-      parentSeq: null,
-      type: "assistant",
-      payload,
-      createdAt: at,
-    });
-    session.messages += 1;
-    session.lastActivityAt = at;
-    store.patchSession(session.id, {
-      entries: session.entries,
-      messages: session.messages,
-      lastActivityAt: at,
-    });
+    if (draftEntry) {
+      const dp = draftEntry.payload as { text?: string; streaming?: boolean };
+      dp.text = text;
+      dp.streaming = false;
+      session.lastActivityAt = at;
+      store.patchSession(session.id, { entries: session.entries, lastActivityAt: at });
+    } else {
+      const payload: Record<string, unknown> = { text };
+      session.entries.push({
+        seq: session.entries.length + 1,
+        parentSeq: null,
+        type: "assistant",
+        payload,
+        createdAt: at,
+      });
+      session.messages += 1;
+      session.lastActivityAt = at;
+      store.patchSession(session.id, {
+        entries: session.entries,
+        messages: session.messages,
+        lastActivityAt: at,
+      });
+    }
   });
   run.status = "done";
   run.finishedAt = at;
   run.partial = text;
   pushSessionState(session.threadRef, session.id, "idle", at);
+  pushDelivery(session.threadRef, { source: { kind: "primary" }, ...(draftEntry ? { entrySeq: draftEntry.seq } : {}) });
   enqueueDelivery(session.threadRef);
 
   // turn 结束后统一解析 summon（fan-out 附加机器人；失败静默不阻塞）
@@ -1285,7 +1386,7 @@ async function runBot(session: StoredSession, profile: BotProfile, model: string
     session.lastActivityAt = at0;
     store.patchSession(session.id, { entries: session.entries, messages: session.messages, lastActivityAt: at0 });
   });
-  pushDelivery(session.threadRef);
+  pushDelivery(session.threadRef, { source: { kind: "bot", botId: profile.botId }, entrySeq: entry.seq });
 
   let lastPartialAt = 0;
   let persistedPartial = "";
@@ -1298,7 +1399,7 @@ async function runBot(session: StoredSession, profile: BotProfile, model: string
     payload.text = full;
     session.lastActivityAt = now;
     store.patchSession(session.id, { entries: session.entries, lastActivityAt: now });
-    pushDelivery(session.threadRef, true);
+    pushDelivery(session.threadRef, { partial: true, source: { kind: "bot", botId: profile.botId }, entrySeq: entry.seq });
   };
 
   let text: string;
@@ -1325,7 +1426,7 @@ async function runBot(session: StoredSession, profile: BotProfile, model: string
     run.finishedAt = Date.now();
     run.error = e instanceof Error ? e.message : "bot failed";
     pushSessionState(session.threadRef, session.id, "idle", Date.now());
-    pushDelivery(session.threadRef);
+    pushDelivery(session.threadRef, { source: { kind: "bot", botId: profile.botId } });
     enqueueDelivery(session.threadRef);
     return;
   }
@@ -1346,7 +1447,7 @@ async function runBot(session: StoredSession, profile: BotProfile, model: string
   run.finishedAt = at;
   run.partial = text;
   pushSessionState(session.threadRef, session.id, "idle", at);
-  pushDelivery(session.threadRef);
+  pushDelivery(session.threadRef, { source: { kind: "bot", botId: profile.botId }, entrySeq: entry.seq });
   enqueueDelivery(session.threadRef);
 }
 
