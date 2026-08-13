@@ -2,6 +2,8 @@
 
 > 简化版在线聊天应用 · 多用户认证 · 对话管理 · AI 自动回复 · 群组对话
 
+**🌐 在线演示地址**：<http://openpilot.lijingang.ccwu.cc:8200>
+
 **🎬 演示录制 · 欢迎使用 OpenPilot**：https://meeting.tencent.com/crm/KPXnz4DWfe
 
 ## 项目介绍
@@ -98,16 +100,7 @@ OpenPilot Chat 是一个简化版在线聊天应用，支持多用户认证、�
 | `8202` | web-ui | Lit 前端 + 服务端代理 |
 | `8203` | core | 最小业务 API（会话/消息/DeepSeek AI） |
 
-> ✅ OpenPilot 使用 `8200`~`8203` 端口段，与原 QM 项目（`8080`/`8090`/`8096`/`8097`）**完全隔离**，可同时运行互不冲突。
-
-### 原 QM 项目端口（保持不变，未动）
-
-| 端口 | 服务 | 说明 |
-|---|---|---|
-| `8080` | Core | Fastify 主 API（业务） |
-| `8090` | Admin | 服务端渲染管理台 |
-| `8096` | Web UI | 前端 |
-| `8097` | Portal | 网关 |
+> ✅ OpenPilot 使用 `8200`~`8203` 端口段
 
 ### 启动 OpenPilot（开发）
 
@@ -124,6 +117,16 @@ cd web-ui && npm install && npm run serve   # 或 npm run dev（Vite HMR）
 # 4. core（:8203）
 cd core && npm install && npm run dev
 ```
+
+### 生产部署
+
+生产环境部署（腾讯云 CentOS 7 · pm2 · HTTP 公网 8200 端口）的完整流程见：
+
+- 📦 [deploy/DEPLOYMENT.md](./deploy/DEPLOYMENT.md) — 部署文档（含 Node glibc-217 安装、pm2 配置、`.env` 生产配置、开机自启、验证与排障）
+
+部署产物（可直接复用）：
+- `deploy/ecosystem.config.cjs` — pm2 进程配置模板（替换密钥占位符后使用）
+- `deploy/run-{core,idp,web-ui,gateway}.sh` — 各服务启动 wrapper 脚本（绕过 pm2 对 `process.argv[1]` 的包装）
 
 ---
 
@@ -177,23 +180,3 @@ gateway :8200（统一入口 / OIDC Client / 反代）
 ## 参考项目：yc-software/qm
 
 > 参考仓库：https://github.com/yc-software/qm —— 一个多人在线 agent 工作平台（multiplayer agent harness for work）。OpenPilot Chat 的架构理念与设计取舍参考自此项目。
-
-### qm 项目重点（提炼）
-
-- **定位**：面向团队的多智能体工作平台。每个员工拥有独立隔离的工作区（workspace），互不影响；同时可在频道、群组消息、项目中与 agent 协作。
-- **Scope 隔离模型**：每个人、每个房间拥有独立的 memory、文件、keychain、权限、cron、Web 应用与持久化沙箱——数据隔离是一等公民。
-- **核心架构**：无头核心（API · 身份 · 策略 · 调度）+ Agent Loop（Pi / OpenCode / Codex / Claude Code 可切换 harness）+ 每 Scope 独立沙箱；Postgres 持久化会话、记忆与队列。
-- **技术栈**：TypeScript on Node + Fastify（HTTP 核心）；Web UI 用 Vite + Lit；Slack 插件用 Bolt。
-- **安全姿态**：Strict（所有工具调用人工审批）/ Auto（默认，内容分类器筛查）/ Dangerous（无筛查无暂停）三档，叠加预声明命令策略（递归删除、破坏性 SQL 等硬拒绝）。
-- **部署模式**：deployment directory——core 保持通用，组织特定配置集中在部署目录，由 CLI 校验并部署；支持私有 fork，用 update-qm / upstream-pr 双技能维护上游边界。
-
-### 对 OpenPilot Chat 的借鉴
-
-| qm 的设计 | OpenPilot Chat 对应实现 |
-|---|---|
-| Scope 隔离（数据隔离一等公民） | 全部多租户查询强制 scope 条件（见 docs/PROJECT_PLAN.md §4.3） |
-| 无头核心 + HTTP API | Core :8203（Fastify 5 主 API） |
-| Postgres 持久化（会话/记忆/队列） | PostgreSQL + pg-boss 任务队列 |
-| Web UI：Vite + Lit | Web UI :8202（Vite 5 + Lit 3） |
-| 身份与权限 | OIDC + session cookie + ACL（见 docs/login/AUTHENTICATION.md） |
-| 多 harness / 多模型可切换 | LLM Provider 抽象（DeepSeek 默认，可换 Claude / Codex） |
