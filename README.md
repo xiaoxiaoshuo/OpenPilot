@@ -2,6 +2,8 @@
 
 > 简化版在线聊天应用 · 多用户认证 · 对话管理 · AI 自动回复 · 群组对话
 
+**📺 系统演示录制**：https://meeting.tencent.com/crm/KPXnz4DWfe
+
 ## 项目介绍
 
 OpenPilot Chat 是一个简化版在线聊天应用，支持多用户认证、个人对话管理（含标签/分类）、AI 自动回复，以及多人与多机器人参与的群组对话。
@@ -122,6 +124,27 @@ cd web-ui && npm install && npm run serve   # 或 npm run dev（Vite HMR）
 # 4. core（:8203）
 cd core && npm install && npm run dev
 ```
+
+---
+
+## 后端内存评估
+
+> 实测环境：macOS + Node.js v22，4 个服务同时运行，空闲/轻负载状态。
+
+| 服务 | 端口 | 实测 RSS（常驻内存） |
+|---|---|---|
+| gateway | `8200` | ~51 MB |
+| IdP | `8201` | ~40 MB |
+| web-ui | `8202` | ~63 MB |
+| core | `8203` | ~57 MB |
+| **合计** | | **~210 MB** |
+
+- 当前 core 使用 JSON 文件存储（`core/data/db.json`，原子写入），数据常驻内存；实测 58 个会话 / 558 条消息仅占 <1 MB，消息量增长到数万条也只需几 MB。
+- LLM（DeepSeek）流式回复会产生临时缓冲（通常几 KB~几十 KB，可忽略）。
+- **建议配置**：
+  - 最低：**512 MB**（可运行，峰值较紧）
+  - 推荐：**1 GB**（舒适运行，含峰值余量）
+  - 若启用 PostgreSQL + pg-boss（目标架构）：推荐 **1.5~2 GB**
 
 ---
 
