@@ -1,0 +1,24 @@
+# 依赖与构建产物（会在镜像内重新安装/构建）
+**/node_modules
+**/dist-web
+
+# 版本控制
+.git
+.gitignore
+
+# 密钥与本地环境（切勿打进镜像）
+.env
+**/.env
+**/.env.local
+**/.idp-jwk.json
+client_secret_*.json
+
+# 本地数据与临时文件
+core/data
+**/*.log
+backups/
+test/
+
+# 系统/编辑器
+.DS_Store
+**/._*
