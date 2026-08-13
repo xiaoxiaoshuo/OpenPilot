@@ -369,7 +369,16 @@ export function createChatSurface(
         chatState.pendingSend = null;
       if (e.type === "agent_end" && pendingDeliveryRefresh && agent === chatState.agent) {
         pendingDeliveryRefresh = false;
-        void refreshTranscriptFromEntries(agent);
+        scheduleTranscriptRefresh(agent);
+      }
+      if (e.type === "agent_end" && chatState.scopeId?.startsWith("group:") && agent === chatState.agent) {
+        // 群组会话：主 agent 结束后可能异步 fan-out 附加机器人，
+        // 启动时序/SSE 竞态下靠 delivery 可能漏，这里做延时兜底拉取（覆盖较慢的 bot 冷启动）。
+        for (const delay of [1500, 4000, 8000, 16000, 24000]) {
+          setTimeout(() => {
+            if (agent === chatState.agent && !agent.state.isStreaming) scheduleTranscriptRefresh(agent, true);
+          }, delay);
+        }
       }
       if (e.type === "agent_end" && !detachedAgents.has(agent))
         sessionsState.list = clearWorking(sessionsState.list, threadRef);
@@ -479,7 +488,23 @@ export function createChatSurface(
   }
 
   let pendingDeliveryRefresh = false;
-  function onDelivery(threadRef: string): void {
+  let transcriptRefreshInFlight = false;
+  let transcriptRefreshQueued = false;
+  function scheduleTranscriptRefresh(agent: Agent, force = false): void {
+    if (transcriptRefreshInFlight) {
+      transcriptRefreshQueued = transcriptRefreshQueued || force;
+      return;
+    }
+    transcriptRefreshInFlight = true;
+    void refreshTranscriptFromEntries(agent, force).finally(() => {
+      transcriptRefreshInFlight = false;
+      if (transcriptRefreshQueued && agent === chatState.agent) {
+        transcriptRefreshQueued = false;
+        scheduleTranscriptRefresh(agent);
+      }
+    });
+  }
+  function onDelivery(threadRef: string, partial = false): void {
     const ro = readOnlyView;
     if (ro && threadRef === ro.threadRef) {
       void fetchTranscript(ro.id, ro.anchorSeq !== null ? { sinceSeq: ro.anchorSeq } : { tailTurns: TAIL_TURNS })
@@ -501,12 +526,13 @@ export function createChatSurface(
     }
     const agent = chatState.agent;
     if (!agent || threadRef !== chatState.threadRef) return;
-    if (agent.state.isStreaming) {
-      // 流式期间（主 agent 还在回复）bot 回复的 delivery 先记下，agent_end 后补刷新
+    if (agent.state.isStreaming && partial) {
+      // 主 agent 流式期间的 partial delivery 先记下，agent_end 后补刷新
       pendingDeliveryRefresh = true;
       return;
     }
-    void refreshTranscriptFromEntries(agent);
+    // 非 partial（bot 完成投递）或非流式：直接（串行）刷新；完成投递强制绕过 isStreaming
+    scheduleTranscriptRefresh(agent, !partial);
   }
 
   function resumeIfIdle(): void {
@@ -587,12 +613,12 @@ export function createChatSurface(
     return activePendingApprovals().length > 0;
   }
 
-  async function refreshTranscriptFromEntries(agent: Agent): Promise<void> {
+  async function refreshTranscriptFromEntries(agent: Agent, force = false): Promise<void> {
     const sessionId = chatState.sessionId;
-    if (!sessionId || agent !== chatState.agent || agent.state.isStreaming) return drawActiveChat(agent);
+    if (!sessionId || agent !== chatState.agent || (!force && agent.state.isStreaming)) return drawActiveChat(agent);
     const generation = forkOriginController.beginRefresh();
     const last = agent.state.messages[agent.state.messages.length - 1] as { stopReason?: string } | undefined;
-    if (last?.stopReason === "error" || last?.stopReason === "aborted") return drawActiveChat(agent);
+    if (!force && (last?.stopReason === "error" || last?.stopReason === "aborted")) return drawActiveChat(agent);
     try {
       const anchor = chatState.transcriptAnchorSeq;
       const page = await transcriptFetcher(sessionId, anchor !== null ? { sinceSeq: anchor } : undefined);
@@ -600,7 +626,7 @@ export function createChatSurface(
         !forkOriginController.isCurrentRefresh(generation) ||
         sessionId !== chatState.sessionId ||
         agent !== chatState.agent ||
-        agent.state.isStreaming
+        (!force && agent.state.isStreaming)
       )
         return;
       const split = inheritedTranscript(chatState.forkSession ?? {}, page.entries ?? []);

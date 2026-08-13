@@ -85,7 +85,7 @@ export interface ChatSurface {
   approvalSummaryView(a: PendingApproval, expanded?: boolean): TemplateResult;
   notePendingSessionOnSend(): void;
   syncPaneState(): void;
-  onDelivery(threadRef: string): void;
+  onDelivery(threadRef: string, partial?: boolean): void;
   resumeIfIdle(): void;
   redraw(): void;
   dispose(): void;
