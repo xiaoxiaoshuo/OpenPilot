@@ -1320,13 +1320,15 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
         out.push(msg as AgentMessage);
       }
     } else if (e.type === "assistant") {
+      const isStreamingDraft = Boolean((e.payload as { streaming?: boolean }).streaming);
       pendingAuthor = {
         author: (e.payload as { author?: string }).author,
         bot: (e.payload as { bot?: string }).bot,
         avatar: (e.payload as { avatar?: string }).avatar,
-        streaming: Boolean((e.payload as { streaming?: boolean }).streaming),
+        streaming: isStreamingDraft,
       };
-      if (text || pending.length || heldPosts.size) {
+      // streaming 草稿即使 text 为空也要生成占位消息（否则 bot 回复在首次拉取时被丢弃）
+      if (text || pending.length || heldPosts.size || isStreamingDraft) {
         spillHeldPosts();
         if (posted && text) {
           pending.push({
@@ -1338,6 +1340,15 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
           });
           flushWork("", e.createdAt);
         } else {
+          if (isStreamingDraft && !text && !pending.length && !heldPosts.size) {
+            pending.push({
+              seq: e.seq ?? out.length,
+              parentSeq: e.parentSeq ?? null,
+              type: "text",
+              payload: { text: "" },
+              createdAt: e.createdAt,
+            });
+          }
           flushWork(text, e.createdAt, !posted);
         }
       }

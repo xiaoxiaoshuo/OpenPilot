@@ -652,7 +652,7 @@ export function createChatSurface(
         !forkOriginController.isCurrentRefresh(generation) ||
         sessionId !== chatState.sessionId ||
         agent !== chatState.agent ||
-        agent.state.isStreaming
+        (!force && agent.state.isStreaming)
       )
         return;
       agent.state.messages = messages;
@@ -1401,6 +1401,7 @@ export function createChatSurface(
       const msg = message as AssistantMessage;
       const authored = (msg as unknown as { author?: string; bot?: string; avatar?: string }).author;
       const botAvatar = (msg as unknown as { avatar?: string }).avatar;
+      const streamingDraft = Boolean((msg as unknown as { streaming?: boolean }).streaming);
       const assistantAvatar = groupChat && authored ? botAvatar || "🤖" : null;
       const work = isStreaming ? null : (msg as AssistantWork).work;
       const text = messageText(msg).trim();
@@ -1411,7 +1412,8 @@ export function createChatSurface(
         showWork ||
         hasText ||
         Boolean(deliveredFiles?.length) ||
-        msg.content.some((chunk) => chunk.type === "thinking" && chunk.thinking.trim());
+        msg.content.some((chunk) => chunk.type === "thinking" && chunk.thinking.trim()) ||
+        (streamingDraft && Boolean(authored));
       if (!hasVisibleContent && msg.stopReason !== "error" && msg.stopReason !== "aborted") return nothing;
       return html`
         <article class="message-row assistant-row ${groupChat ? "group-message" : ""} ${isStreaming ? "streaming" : ""}" data-index=${index}>
