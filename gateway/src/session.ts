@@ -47,6 +47,7 @@ export interface TmpClaims {
   returnTo: string;
   provider: string;
   locale?: "zh-CN" | "en";
+  theme?: "light" | "dark" | "system";
   iat: number;
   exp: number;
 }

@@ -1,9 +1,13 @@
 export type AuthLocale = "zh-CN" | "en";
+export type AuthTheme = "light" | "dark" | "system";
 
 export interface AuthCopy {
   htmlLang: string;
   languageLabel: string;
   switchLanguage: string;
+  themeLight: string;
+  themeDark: string;
+  themeSystem: string;
   brandKicker: string;
   signInTitle: string;
   signInSubtitle: string;
@@ -31,6 +35,9 @@ const EN: AuthCopy = {
   htmlLang: "en",
   languageLabel: "Language",
   switchLanguage: "中文",
+  themeLight: "Light theme",
+  themeDark: "Dark theme",
+  themeSystem: "Use system theme",
   brandKicker: "YOUR WORKSPACE",
   signInTitle: "Welcome to OpenPilot",
   signInSubtitle: "Sign in to continue to your conversations, projects, and automations.",
@@ -58,6 +65,9 @@ const ZH_CN: AuthCopy = {
   htmlLang: "zh-CN",
   languageLabel: "语言",
   switchLanguage: "English",
+  themeLight: "浅色主题",
+  themeDark: "深色主题",
+  themeSystem: "跟随系统主题",
   brandKicker: "你的工作空间",
   signInTitle: "欢迎使用 OpenPilot",
   signInSubtitle: "登录后即可继续访问你的对话、项目和自动化任务。",
@@ -85,6 +95,11 @@ export function resolveAuthLocale(explicit: string | null | undefined, acceptLan
   if (explicit === "zh-CN" || explicit === "zh") return "zh-CN";
   if (explicit === "en" || explicit === "en-US") return "en";
   return /(?:^|[,;\s-])zh(?:[-_]|$)/i.test(acceptLanguage ?? "") ? "zh-CN" : "en";
+}
+
+export function resolveAuthTheme(value: string | null | undefined): AuthTheme {
+  if (value === "light" || value === "dark" || value === "system") return value;
+  return "system";
 }
 
 export function authCopy(locale: AuthLocale): AuthCopy {
