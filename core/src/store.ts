@@ -134,6 +134,13 @@ export function createStore(dataDir: string) {
         if (s) Object.assign(s, patch);
       });
     },
+    deleteSession(id: string): boolean {
+      if (!db.sessions[id]) return false;
+      mutate(() => {
+        delete db.sessions[id];
+      });
+      return true;
+    },
 
     // ── projects ──
     listProjects(): StoredProject[] {

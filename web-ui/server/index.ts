@@ -1229,6 +1229,13 @@ const routeRequest = async (req: IncomingMessage, res: ServerResponse) => {
       return relay(res, r);
     }
 
+    if (method === "DELETE" && path.startsWith("/api/sessions/")) {
+      const id = decodeURIComponent(path.slice("/api/sessions/".length));
+      if (!id || id.includes("/")) return json(res, 404, { error: "not_found" });
+      const r = await coreFetch("DELETE", `/v1/sessions/${encodeURIComponent(id)}?principalId=${encodeURIComponent(user)}`);
+      return relay(res, r);
+    }
+
     if (method === "POST" && path.startsWith("/api/sessions/")) {
       const id = decodeURIComponent(path.slice("/api/sessions/".length));
       const patch: {

@@ -2,14 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mintPortalIdentity, PORTAL_IDENTITY_HEADER } from "../../chassis/src/portal-identity.ts";
+import { mintPortalIdentity, PORTAL_IDENTITY_HEADER } from "../../core/chassis/src/portal-identity.ts";
 
 function isNoncedCoreCall(url: string, pathname: string): boolean {
   const u = new URL(url, "http://core");
   if (u.pathname !== pathname) return false;
-  const keys = [...u.searchParams.keys()];
   return (
-    keys.length === 1 && keys[0] === "_sourceAuthNonce" && (u.searchParams.get("_sourceAuthNonce") ?? "").length > 0
+    u.searchParams.get("principalId") === "alice" &&
+    (u.searchParams.get("_sourceAuthNonce") ?? "").length > 0
   );
 }
 
@@ -58,23 +58,29 @@ test("session patch binds the signed-in principal and relays pinned/color (null 
     body: JSON.stringify({ pinned: true, principalId: "mallory" }),
   });
   assert.deepEqual(calls.slice(before).find((call) => isNoncedCoreCall(call.url, "/v1/sessions/s1"))?.body, {
-    principalId: "alice",
     pinned: true,
   });
 
   before = calls.length;
   await fetch(`${base}/api/sessions/s1`, { method: "POST", headers, body: JSON.stringify({ color: "#aabbcc" }) });
   assert.deepEqual(calls.slice(before).find((call) => isNoncedCoreCall(call.url, "/v1/sessions/s1"))?.body, {
-    principalId: "alice",
     color: "#aabbcc",
   });
 
   before = calls.length;
   await fetch(`${base}/api/sessions/s1`, { method: "POST", headers, body: JSON.stringify({ color: null }) });
   assert.deepEqual(calls.slice(before).find((call) => isNoncedCoreCall(call.url, "/v1/sessions/s1"))?.body, {
-    principalId: "alice",
     color: null,
   });
+});
+
+test("session deletion relays a DELETE request for the signed-in principal", async () => {
+  const before = calls.length;
+  const r = await fetch(`${base}/api/sessions/s1`, { method: "DELETE", headers });
+  assert.equal(r.status, 200);
+  const call = calls.slice(before).find((entry) => new URL(entry.url, "http://core").pathname === "/v1/sessions/s1");
+  assert.equal(call?.method, "DELETE");
+  assert.equal(new URL(call?.url ?? "", "http://core").searchParams.get("principalId"), "alice");
 });
 
 test("a patch naming no known field is rejected at the surface, never relayed", async () => {

@@ -25,6 +25,15 @@ test("project menu keys are available in Chinese and English", () => {
   assert.match(i18n, /"sessions\.viewProject": "View project"/);
 });
 
+test("session deletion confirms irreversible removal and clears the active chat before choosing a successor", () => {
+  assert.match(sessions, /window\.confirm\([\s\S]*t\("sessions\.deleteConversationTitle"\)[\s\S]*t\("sessions\.deleteConversationBody", \{ name: sessionTitle\(s\) \}\)/);
+  assert.match(sessions, /await deleteSession\(s\.id\)/);
+  assert.match(sessions, /sessionsState\.list = sessionsState\.list\.filter\(\(session\) => session\.id !== s\.id\)/);
+  assert.match(sessions, /mainConversation\(\)\.resetChatState\(\)/);
+  assert.match(sessions, /syncUrlFromState\(\)/);
+  assert.match(sessions, /if \(successor\) await openSession\(successor\)/);
+});
+
 test("session UI no longer exposes archive or surface filters", () => {
   assert.doesNotMatch(sessions, /showArchived|toggleShowArchived|setArchived|chatsPageSurface|fieldSelect/);
   assert.doesNotMatch(sessions, /archived-toggle|session-archive-btn/);

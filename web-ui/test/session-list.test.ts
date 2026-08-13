@@ -11,6 +11,7 @@ import {
   backgroundLabel,
   conversationBackground,
   markWorking,
+  nextSessionAfterRemoval,
   recencyGroup,
   rowIndicators,
   recentProjectSeeds,
@@ -53,6 +54,17 @@ test("chat browse statuses use awaiting input and ignore legacy archive state", 
       .map((session) => session.id),
     ["waiting", "archived"],
   );
+});
+
+test("deleting a session selects the next visible row, or the previous row at the end", () => {
+  const a = saved("a", "web:u:a");
+  const b = saved("b", "web:u:b");
+  const c = saved("c", "web:u:c");
+  assert.equal(nextSessionAfterRemoval([a, b, c], "a")?.id, "b");
+  assert.equal(nextSessionAfterRemoval([a, b, c], "b")?.id, "c");
+  assert.equal(nextSessionAfterRemoval([a, b, c], "c")?.id, "b");
+  assert.equal(nextSessionAfterRemoval([a], "a"), null);
+  assert.equal(nextSessionAfterRemoval([a, b], "missing"), null);
 });
 
 test("splitPinned lifts pinned rows out in order and leaves the rest untouched", () => {
