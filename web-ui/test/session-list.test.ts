@@ -37,7 +37,7 @@ function saved(id: string, threadRef: string, title: string | null = null): Core
   return { id, type: "dm", scopeId: "", threadRef, createdAt: 1, title, channelName: null, archived: false };
 }
 
-test("chat browse statuses are mutually exclusive and working does not mean waiting", () => {
+test("chat browse statuses use awaiting input and ignore legacy archive state", () => {
   const active = { ...saved("active", "web:u:active"), working: true };
   const waiting = { ...saved("waiting", "web:u:waiting"), awaitingInput: true };
   const archived = { ...saved("archived", "web:u:archived"), archived: true, awaitingInput: true };
@@ -51,13 +51,7 @@ test("chat browse statuses are mutually exclusive and working does not mean wait
     [active, waiting, archived]
       .filter((session) => chatBrowseStatusMatches(session, "waiting"))
       .map((session) => session.id),
-    ["waiting"],
-  );
-  assert.deepEqual(
-    [active, waiting, archived]
-      .filter((session) => chatBrowseStatusMatches(session, "archived"))
-      .map((session) => session.id),
-    ["archived"],
+    ["waiting", "archived"],
   );
 });
 
@@ -252,30 +246,30 @@ test("recencyGroup buckets by calendar day, then widening spans", () => {
   const now = new Date(2026, 6, 14, 15, 30).getTime();
   const day = 86_400_000;
   const midnight = new Date(2026, 6, 14, 0, 0).getTime();
-  assert.equal(recencyGroup(now, now), "Today");
-  assert.equal(recencyGroup(midnight, now), "Today", "first instant of today");
-  assert.equal(recencyGroup(midnight - 1, now), "Yesterday", "last instant of yesterday");
-  assert.equal(recencyGroup(midnight - day, now), "Yesterday");
-  assert.equal(recencyGroup(midnight - day - 1, now), "Previous 7 days");
-  assert.equal(recencyGroup(midnight - 6 * day, now), "Previous 7 days", "6 days back is still in the window");
-  assert.equal(recencyGroup(midnight - 6 * day - 1, now), "Previous 30 days");
-  assert.equal(recencyGroup(midnight - 29 * day, now), "Previous 30 days");
-  assert.equal(recencyGroup(midnight - 29 * day - 1, now), "Older");
+  assert.equal(recencyGroup(now, now), "今天");
+  assert.equal(recencyGroup(midnight, now), "今天", "first instant of today");
+  assert.equal(recencyGroup(midnight - 1, now), "昨天", "last instant of yesterday");
+  assert.equal(recencyGroup(midnight - day, now), "昨天");
+  assert.equal(recencyGroup(midnight - day - 1, now), "最近 7 天");
+  assert.equal(recencyGroup(midnight - 6 * day, now), "最近 7 天", "6 days back is still in the window");
+  assert.equal(recencyGroup(midnight - 6 * day - 1, now), "最近 30 天");
+  assert.equal(recencyGroup(midnight - 29 * day, now), "最近 30 天");
+  assert.equal(recencyGroup(midnight - 29 * day - 1, now), "更早");
 });
 
 test("recencyGroup anchors boundaries to calendar days, not fixed 24h offsets", () => {
   const now = new Date(2026, 6, 14, 15, 30).getTime();
-  assert.equal(recencyGroup(new Date(2026, 6, 13, 23, 59, 59).getTime(), now), "Yesterday");
-  assert.equal(recencyGroup(new Date(2026, 6, 13, 0, 0).getTime(), now), "Yesterday");
-  assert.equal(recencyGroup(new Date(2026, 6, 8, 0, 0).getTime(), now), "Previous 7 days");
-  assert.equal(recencyGroup(new Date(2026, 6, 7, 23, 59, 59).getTime(), now), "Previous 30 days");
-  assert.equal(recencyGroup(new Date(2026, 5, 15, 0, 0).getTime(), now), "Previous 30 days");
-  assert.equal(recencyGroup(new Date(2026, 5, 14, 23, 59, 59).getTime(), now), "Older");
+  assert.equal(recencyGroup(new Date(2026, 6, 13, 23, 59, 59).getTime(), now), "昨天");
+  assert.equal(recencyGroup(new Date(2026, 6, 13, 0, 0).getTime(), now), "昨天");
+  assert.equal(recencyGroup(new Date(2026, 6, 8, 0, 0).getTime(), now), "最近 7 天");
+  assert.equal(recencyGroup(new Date(2026, 6, 7, 23, 59, 59).getTime(), now), "最近 30 天");
+  assert.equal(recencyGroup(new Date(2026, 5, 15, 0, 0).getTime(), now), "最近 30 天");
+  assert.equal(recencyGroup(new Date(2026, 5, 14, 23, 59, 59).getTime(), now), "更早");
 });
 
 test("recencyGroup treats a future timestamp (optimistic bump) as Today", () => {
   const now = new Date(2026, 6, 14, 15, 30).getTime();
-  assert.equal(recencyGroup(now + 60_000, now), "Today");
+  assert.equal(recencyGroup(now + 60_000, now), "今天");
 });
 
 test("reconcile replaces an optimistic working stamp with server truth", () => {
