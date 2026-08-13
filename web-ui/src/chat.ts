@@ -677,7 +677,7 @@ export function createChatSurface(
         "lastSeq=" + (page.entries?.[page.entries.length - 1]?.seq ?? "-"),
       );
       if (
-        !forkOriginController.isCurrentRefresh(generation) ||
+        (chatState.forkSession ? !forkOriginController.isCurrentRefresh(generation) : false) ||
         sessionId !== chatState.sessionId ||
         agent !== chatState.agent ||
         (!force && agent.state.isStreaming)
@@ -710,7 +710,7 @@ export function createChatSurface(
         void 0;
       }
       if (
-        !forkOriginController.isCurrentRefresh(generation) ||
+        (chatState.forkSession ? !forkOriginController.isCurrentRefresh(generation) : false) ||
         sessionId !== chatState.sessionId ||
         agent !== chatState.agent ||
         (!force && agent.state.isStreaming)
