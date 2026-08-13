@@ -1080,6 +1080,11 @@ function setColor(s: CoreSession, color: string | null): void {
   void persistSessionPatch(s.id, { color });
 }
 
+function redrawActiveSessionTitle(id: string): void {
+  const conversation = mainConversation();
+  if (conversation.state.sessionId === id) conversation.drawActiveChat();
+}
+
 function applyResolvedSession(updated: CoreSession): void {
   sessionsState.list = sessionsState.list.map((s) =>
     s.id === updated.id
@@ -1109,6 +1114,7 @@ async function refreshSessionTitle(s: CoreSession): Promise<void> {
       sessionsState.list = sessionsState.list.map((row) =>
         row.id === s.id ? { ...row, title: refreshed.title } : row,
       );
+      redrawActiveSessionTitle(s.id);
     }
     renderList();
   } catch {
@@ -1125,10 +1131,12 @@ async function persistSessionPatch(
   patch: { title?: string | null; archived?: boolean; pinned?: boolean; color?: string | null; tags?: string[] },
 ): Promise<void> {
   sessionsState.list = sessionsState.list.map((s) => (s.id === id ? { ...s, ...patch } : s));
+  if (patch.title !== undefined) redrawActiveSessionTitle(id);
   renderList();
   try {
     const { session } = await updateSession(id, patch);
     applyResolvedSession(session);
+    if (patch.title !== undefined) redrawActiveSessionTitle(id);
     renderList();
   } catch {
     await refreshSessions({ silent: true });

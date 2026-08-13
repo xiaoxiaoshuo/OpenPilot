@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const sessions = readFileSync(new URL("../src/sessions.ts", import.meta.url), "utf8");
 const i18n = readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8");
 const contexts = readFileSync(new URL("../src/contexts.ts", import.meta.url), "utf8");
+const split = readFileSync(new URL("../src/split.ts", import.meta.url), "utf8");
 
 test("project session menu uses localized labels and accessibility copy", () => {
   assert.match(sessions, /t\("sessions\.viewProject"\)/);
@@ -23,6 +24,13 @@ test("project menu keys are available in Chinese and English", () => {
   }
   assert.match(i18n, /"sessions\.viewProject": "查看群组"/);
   assert.match(i18n, /"sessions\.viewProject": "View project"/);
+});
+
+test("renaming a current session immediately redraws the right-side title and split headers", () => {
+  assert.match(sessions, /function redrawActiveSessionTitle\(id: string\)[\s\S]*conversation\.state\.sessionId === id\) conversation\.drawActiveChat\(\)/);
+  assert.match(sessions, /if \(patch\.title !== undefined\) redrawActiveSessionTitle\(id\);/);
+  assert.match(split, /function paneTitle\(panel: IDockviewPanel\): string \{[\s\S]*sessionTitle\(session\)/);
+  assert.match(split, /export function notifySessionsChanged\(\): void \{[\s\S]*refreshHeaders\(\)/);
 });
 
 test("session deletion confirms irreversible removal and clears the active chat before choosing a successor", () => {
