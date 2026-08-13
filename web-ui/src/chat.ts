@@ -108,6 +108,12 @@ import { createForkOriginController, forkOriginView } from "./fork-origin";
 
 installMarkdownSanitizer();
 
+/** 群聊渲染调试日志（浏览器控制台过滤 [group-chat]） */
+function groupChatLog(...args: unknown[]): void {
+  // eslint-disable-next-line no-console
+  console.log("[group-chat]", new Date().toISOString().slice(11, 23), ...args);
+}
+
 const detachedAgents = new WeakSet<Agent>();
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 interface SettledRowKey {
@@ -369,7 +375,19 @@ export function createChatSurface(
         chatState.pendingSend = null;
       if (e.type === "agent_end" && pendingDeliveryRefresh && agent === chatState.agent) {
         pendingDeliveryRefresh = false;
-        void refreshTranscriptFromEntries(agent);
+        groupChatLog("agent_end → pendingDeliveryRefresh 补刷新");
+        scheduleTranscriptRefresh(agent);
+      }
+      if (e.type === "agent_end" && chatState.scopeId?.startsWith("group:") && agent === chatState.agent) {
+        groupChatLog("agent_end → 群组兜底延时刷新启动");
+        // 群组会话：主 agent 结束后可能异步 fan-out 附加机器人，
+        // 启动时序/SSE 竞态下靠 delivery 可能漏，这里做延时兜底拉取（覆盖较慢的 bot 冷启动）。
+        for (const delay of [1500, 4000, 8000, 16000, 24000]) {
+          setTimeout(() => {
+            groupChatLog("agent_end 兜底 tick", "delay=" + delay, "isStreaming=" + agent.state.isStreaming, "agentMatch=" + (agent === chatState.agent));
+            if (agent === chatState.agent && !agent.state.isStreaming) scheduleTranscriptRefresh(agent, true);
+          }, delay);
+        }
       }
       if (e.type === "agent_end" && !detachedAgents.has(agent))
         sessionsState.list = clearWorking(sessionsState.list, threadRef);
@@ -479,7 +497,45 @@ export function createChatSurface(
   }
 
   let pendingDeliveryRefresh = false;
-  function onDelivery(threadRef: string): void {
+  let transcriptRefreshInFlight = false;
+  let transcriptRefreshQueued = false;
+  function scheduleTranscriptRefresh(agent: Agent, force = false): void {
+    groupChatLog(
+      "scheduleTranscriptRefresh",
+      "force=" + force,
+      "inFlight=" + transcriptRefreshInFlight,
+      "isStreaming=" + agent.state.isStreaming,
+      "sessionId=" + chatState.sessionId,
+    );
+    if (transcriptRefreshInFlight) {
+      transcriptRefreshQueued = transcriptRefreshQueued || force;
+      return;
+    }
+    transcriptRefreshInFlight = true;
+    void refreshTranscriptFromEntries(agent, force).finally(() => {
+      transcriptRefreshInFlight = false;
+      if (transcriptRefreshQueued && agent === chatState.agent) {
+        transcriptRefreshQueued = false;
+        scheduleTranscriptRefresh(agent);
+      }
+    });
+  }
+  function onDelivery(
+    threadRef: string,
+    partial = false,
+    _source?: { kind: "primary" } | { kind: "bot"; botId: string },
+    _entrySeq?: number,
+  ): void {
+    groupChatLog(
+      "onDelivery",
+      "thread=" + threadRef?.slice(-8),
+      "partial=" + partial,
+      "source=" + (_source?.kind ?? "none") + (_source?.kind === "bot" ? ":" + _source.botId : ""),
+      "entrySeq=" + (_entrySeq ?? "-"),
+      "curThread=" + (chatState.threadRef?.slice(-8) ?? "null"),
+      "hasAgent=" + Boolean(chatState.agent),
+      "isStreaming=" + (chatState.agent?.state.isStreaming ?? "-"),
+    );
     const ro = readOnlyView;
     if (ro && threadRef === ro.threadRef) {
       void fetchTranscript(ro.id, ro.anchorSeq !== null ? { sinceSeq: ro.anchorSeq } : { tailTurns: TAIL_TURNS })
@@ -500,13 +556,20 @@ export function createChatSurface(
       return;
     }
     const agent = chatState.agent;
-    if (!agent || threadRef !== chatState.threadRef) return;
-    if (agent.state.isStreaming) {
-      // 流式期间（主 agent 还在回复）bot 回复的 delivery 先记下，agent_end 后补刷新
+    if (!agent || threadRef !== chatState.threadRef) {
+      groupChatLog("onDelivery → SKIP", !agent ? "无 agent" : "thread 不匹配");
+      return;
+    }
+    // 主 agent 的 partial delivery 仅用于主 agent 自身的打字机流式（SSE 通道），
+    // 不需要触发整表刷新，否则会打断主 agent 的流式体验。
+    if (partial && _source?.kind !== "bot") {
+      groupChatLog("onDelivery → 主 agent partial，仅记录 pending");
       pendingDeliveryRefresh = true;
       return;
     }
-    void refreshTranscriptFromEntries(agent);
+    // 附加机器人的任何投递（草稿建立 / partial / 完成）都强制整表刷新：
+    // 主 agent 现在也有草稿 entry，force 刷新能同时渲染「主 agent + 各 bot」而不会丢主 agent 内容。
+    scheduleTranscriptRefresh(agent, true);
   }
 
   function resumeIfIdle(): void {
@@ -587,24 +650,48 @@ export function createChatSurface(
     return activePendingApprovals().length > 0;
   }
 
-  async function refreshTranscriptFromEntries(agent: Agent): Promise<void> {
+  async function refreshTranscriptFromEntries(agent: Agent, force = false): Promise<void> {
     const sessionId = chatState.sessionId;
-    if (!sessionId || agent !== chatState.agent || agent.state.isStreaming) return drawActiveChat(agent);
+    groupChatLog(
+      "refreshTranscript",
+      "force=" + force,
+      "sessionId=" + (sessionId?.slice(0, 8) ?? "null"),
+      "agentMatch=" + (agent === chatState.agent),
+      "isStreaming=" + agent.state.isStreaming,
+      "anchor=" + (chatState.transcriptAnchorSeq ?? "null"),
+    );
+    if (!sessionId || agent !== chatState.agent || (!force && agent.state.isStreaming)) {
+      groupChatLog("refreshTranscript → 入口守卫 return", !sessionId ? "无 sessionId" : agent !== chatState.agent ? "agent 不匹配" : "非 force 且流式中");
+      return drawActiveChat(agent);
+    }
     const generation = forkOriginController.beginRefresh();
     const last = agent.state.messages[agent.state.messages.length - 1] as { stopReason?: string } | undefined;
-    if (last?.stopReason === "error" || last?.stopReason === "aborted") return drawActiveChat(agent);
+    if (!force && (last?.stopReason === "error" || last?.stopReason === "aborted")) return drawActiveChat(agent);
     try {
       const anchor = chatState.transcriptAnchorSeq;
       const page = await transcriptFetcher(sessionId, anchor !== null ? { sinceSeq: anchor } : undefined);
+      groupChatLog(
+        "refreshTranscript → 拉取完成",
+        "entries=" + (page.entries?.length ?? 0),
+        "earlier=" + (page.earlierEntries ?? 0),
+        "lastSeq=" + (page.entries?.[page.entries.length - 1]?.seq ?? "-"),
+      );
       if (
-        !forkOriginController.isCurrentRefresh(generation) ||
+        (chatState.forkSession ? !forkOriginController.isCurrentRefresh(generation) : false) ||
         sessionId !== chatState.sessionId ||
         agent !== chatState.agent ||
-        agent.state.isStreaming
-      )
+        (!force && agent.state.isStreaming)
+      ) {
+        groupChatLog("refreshTranscript → 第二处守卫 return（拉取后）");
         return;
+      }
       const split = inheritedTranscript(chatState.forkSession ?? {}, page.entries ?? []);
       const messages = entriesToMessages(split.current, transcriptModel());
+      groupChatLog(
+        "refreshTranscript → 转换消息",
+        "messages=" + messages.length,
+        "尾部=" + messages.slice(-3).map((m) => (m as { role?: string }).role + "/" + ((m as { content?: unknown[] }).content?.length ?? 0)).join(","),
+      );
       const refreshedInherited = inheritedRefreshEntries(
         chatState.forkSession ?? {},
         page.entries ?? [],
@@ -623,19 +710,24 @@ export function createChatSurface(
         void 0;
       }
       if (
-        !forkOriginController.isCurrentRefresh(generation) ||
+        (chatState.forkSession ? !forkOriginController.isCurrentRefresh(generation) : false) ||
         sessionId !== chatState.sessionId ||
         agent !== chatState.agent ||
-        agent.state.isStreaming
-      )
+        (!force && agent.state.isStreaming)
+      ) {
+        groupChatLog("refreshTranscript → 第三处守卫 return（写 messages 前）");
         return;
+      }
       agent.state.messages = messages;
+      groupChatLog("refreshTranscript → 已写入 agent.state.messages", "count=" + messages.length);
       const rawEarlier = page.earlierEntries ?? 0;
       chatState.earlierCount = currentEarlierCount(chatState.forkSession ?? {}, rawEarlier);
       chatState.transcriptAnchorSeq = rawEarlier > 0 ? (page.entries?.[0]?.seq ?? null) : null;
-    } catch {
+    } catch (e) {
+      groupChatLog("refreshTranscript → 异常", e);
       void 0;
     }
+    groupChatLog("refreshTranscript → drawActiveChat");
     drawActiveChat(agent);
   }
 
@@ -1010,8 +1102,26 @@ export function createChatSurface(
   ctx.onDensityChange(() => drawActiveChat());
 
   function drawActiveChat(agent = chatState.agent, opts: { forceScroll?: boolean } = {}): void {
-    if (!agent || agent !== chatState.agent || !chatState.host || appState.currentView !== "chats") return;
+    if (!agent || agent !== chatState.agent || !chatState.host || appState.currentView !== "chats") {
+      groupChatLog(
+        "drawActiveChat → 守卫 return",
+        !agent
+          ? "无 agent"
+          : agent !== chatState.agent
+            ? "agent 不匹配"
+            : !chatState.host
+              ? "无 host"
+              : "非 chats 视图:" + appState.currentView,
+      );
+      return;
+    }
     const currentMessages = visibleMessages(agent);
+    groupChatLog(
+      "drawActiveChat",
+      "messages=" + currentMessages.length,
+      "isStreaming=" + agent.state.isStreaming,
+      "sessionId=" + (chatState.sessionId?.slice(0, 8) ?? "null"),
+    );
     const messages = chatState.inheritedExpanded
       ? [...chatState.inheritedMessages, ...currentMessages]
       : currentMessages;
@@ -1020,7 +1130,12 @@ export function createChatSurface(
     const inheritedOffset = chatState.inheritedExpanded ? chatState.inheritedMessages.length : 0;
     if (messages.length) {
       messageContent = messages.map((m, i) =>
-        settledChatMessage(m, i - inheritedOffset, agent.state.isStreaming && m === agent.state.streamingMessage),
+        settledChatMessage(
+          m,
+          i - inheritedOffset,
+          (agent.state.isStreaming && m === agent.state.streamingMessage) ||
+            Boolean((m as unknown as { streaming?: boolean }).streaming),
+        ),
       );
     } else if (isNewUser) {
       messageContent = welcomeGreeting();
@@ -1370,6 +1485,7 @@ export function createChatSurface(
       const msg = message as AssistantMessage;
       const authored = (msg as unknown as { author?: string; bot?: string; avatar?: string }).author;
       const botAvatar = (msg as unknown as { avatar?: string }).avatar;
+      const streamingDraft = Boolean((msg as unknown as { streaming?: boolean }).streaming);
       const assistantAvatar = groupChat && authored ? botAvatar || "🤖" : null;
       const work = isStreaming ? null : (msg as AssistantWork).work;
       const text = messageText(msg).trim();
@@ -1380,7 +1496,8 @@ export function createChatSurface(
         showWork ||
         hasText ||
         Boolean(deliveredFiles?.length) ||
-        msg.content.some((chunk) => chunk.type === "thinking" && chunk.thinking.trim());
+        msg.content.some((chunk) => chunk.type === "thinking" && chunk.thinking.trim()) ||
+        (streamingDraft && Boolean(authored));
       if (!hasVisibleContent && msg.stopReason !== "error" && msg.stopReason !== "aborted") return nothing;
       return html`
         <article class="message-row assistant-row ${groupChat ? "group-message" : ""} ${isStreaming ? "streaming" : ""}" data-index=${index}>

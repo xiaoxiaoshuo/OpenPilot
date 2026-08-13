@@ -358,6 +358,17 @@ interface SessionStateFrame {
   [k: string]: unknown;
 }
 
+function forwardDelivery(frame: { threadRef?: unknown; partial?: unknown; source?: unknown; entrySeq?: unknown }): void {
+  const threadRef = typeof frame.threadRef === "string" ? frame.threadRef : "";
+  const owner = ownerOfWebThread(threadRef);
+  if (!owner) return;
+  const visible: Record<string, unknown> = { threadRef };
+  if (frame.partial === true) visible.partial = true;
+  if (frame.source && typeof frame.source === "object") visible.source = frame.source;
+  if (typeof frame.entrySeq === "number") visible.entrySeq = frame.entrySeq;
+  for (const res of deliveryClients.get(owner) ?? []) sseEvent(res, "delivery", visible);
+}
+
 function forwardSessionState(frame: SessionStateFrame): void {
   const threadRef = typeof frame.threadRef === "string" ? frame.threadRef : "";
   if (!threadRef) return;
@@ -398,14 +409,14 @@ async function runStateFeed(): Promise<void> {
           const frames = buf.split("\n\n");
           buf = frames.pop() ?? "";
           for (const frame of frames) {
-            if (!frame.split("\n").some((l) => l === "event: session_state")) continue;
-            const data = frame
-              .split("\n")
-              .find((l) => l.startsWith("data: "))
-              ?.slice("data: ".length);
-            if (!data) continue;
+            const lines = frame.split("\n");
+            const event = lines.find((line) => line.startsWith("event: "))?.slice("event: ".length);
+            const data = lines.find((line) => line.startsWith("data: "))?.slice("data: ".length);
+            if (!event || !data) continue;
             try {
-              forwardSessionState(JSON.parse(data) as SessionStateFrame);
+              const parsed = JSON.parse(data) as SessionStateFrame;
+              if (event === "session_state") forwardSessionState(parsed);
+              else if (event === "delivery") forwardDelivery(parsed);
             } catch {
               void 0;
             }

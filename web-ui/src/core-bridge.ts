@@ -932,8 +932,15 @@ export interface SessionStateEvent {
   at: number;
 }
 
+export interface DeliveryEvent {
+  threadRef: string;
+  partial: boolean;
+  source?: { kind: "primary" } | { kind: "bot"; botId: string };
+  entrySeq?: number;
+}
+
 export function subscribeDeliveries(
-  onThread: (threadRef: string) => void,
+  onThread: (event: DeliveryEvent) => void,
   onSessionState?: (event: SessionStateEvent) => void,
   onResync?: () => void,
 ): () => void {
@@ -955,8 +962,25 @@ export function subscribeDeliveries(
   });
   es.addEventListener("delivery", (e: MessageEvent) => {
     try {
-      const d = JSON.parse(e.data) as { threadRef?: string };
-      if (typeof d.threadRef === "string" && d.threadRef) onThread(d.threadRef);
+      const d = JSON.parse(e.data) as { threadRef?: string; partial?: unknown; source?: unknown; entrySeq?: unknown };
+      // eslint-disable-next-line no-console
+      console.log(
+        "[group-chat]",
+        new Date().toISOString().slice(11, 23),
+        "SSE delivery 帧",
+        "thread=" + (d.threadRef?.slice(-8) ?? "-"),
+        "partial=" + (d.partial === true),
+        "source=" + JSON.stringify(d.source ?? "none"),
+        "entrySeq=" + (d.entrySeq ?? "-"),
+      );
+      if (typeof d.threadRef === "string" && d.threadRef) {
+        onThread({
+          threadRef: d.threadRef,
+          partial: d.partial === true,
+          source: (d.source as DeliveryEvent["source"]) ?? undefined,
+          entrySeq: typeof d.entrySeq === "number" ? d.entrySeq : undefined,
+        });
+      }
     } catch (err) {
       swallow("web-ui: handle delivery nudge", err);
     }
@@ -1182,7 +1206,7 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
   let pending: ToolActivity[] = [];
   let deliveryFiles: DeliveredFile[] = [];
   let posted = false;
-  let pendingAuthor: { author?: string; bot?: string; avatar?: string } | undefined;
+  let pendingAuthor: { author?: string; bot?: string; avatar?: string; streaming?: boolean } | undefined;
   const heldPosts = new Map<string, { text: string; activity: ToolActivity }>();
   const spillHeldPosts = (): void => {
     for (const held of heldPosts.values()) pending.push(held.activity);
@@ -1236,9 +1260,11 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
     pending = [];
     deliveryFiles = [];
     if (pendingAuthor) {
-      (msg as unknown as { author?: string; bot?: string; avatar?: string }).author = pendingAuthor.author;
-      (msg as unknown as { author?: string; bot?: string; avatar?: string }).bot = pendingAuthor.bot;
-      (msg as unknown as { author?: string; bot?: string; avatar?: string }).avatar = pendingAuthor.avatar;
+      const annotated = msg as unknown as { author?: string; bot?: string; avatar?: string; streaming?: boolean };
+      annotated.author = pendingAuthor.author;
+      annotated.bot = pendingAuthor.bot;
+      annotated.avatar = pendingAuthor.avatar;
+      if (pendingAuthor.streaming) annotated.streaming = true;
       pendingAuthor = undefined;
     }
   };
@@ -1251,6 +1277,7 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
       files?: Array<{ name?: string; mimetype?: string; sizeBytes?: number; artifactId?: string }>;
       hidden?: boolean;
       steered?: boolean;
+      streaming?: boolean;
     } | null;
     const text = payload?.text ?? "";
     if (ACTIVITY_TYPES.has(e.type)) {
@@ -1312,12 +1339,15 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
         out.push(msg as AgentMessage);
       }
     } else if (e.type === "assistant") {
+      const isStreamingDraft = Boolean((e.payload as { streaming?: boolean }).streaming);
       pendingAuthor = {
         author: (e.payload as { author?: string }).author,
         bot: (e.payload as { bot?: string }).bot,
         avatar: (e.payload as { avatar?: string }).avatar,
+        streaming: isStreamingDraft,
       };
-      if (text || pending.length || heldPosts.size) {
+      // streaming 草稿即使 text 为空也要生成占位消息（否则 bot 回复在首次拉取时被丢弃）
+      if (text || pending.length || heldPosts.size || isStreamingDraft) {
         spillHeldPosts();
         if (posted && text) {
           pending.push({
@@ -1329,6 +1359,15 @@ export function entriesToMessages(entries: SessionEntry[], model: Model<Api>): A
           });
           flushWork("", e.createdAt);
         } else {
+          if (isStreamingDraft && !text && !pending.length && !heldPosts.size) {
+            pending.push({
+              seq: e.seq ?? out.length,
+              parentSeq: e.parentSeq ?? null,
+              type: "text",
+              payload: { text: "" },
+              createdAt: e.createdAt,
+            });
+          }
           flushWork(text, e.createdAt, !posted);
         }
       }
