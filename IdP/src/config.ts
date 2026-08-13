@@ -3,7 +3,7 @@
  * 差异：认证方式从"邮箱 magic link"换成"GitHub / Google 第三方登录"
  */
 
-export type ProviderKind = "github" | "google";
+export type ProviderKind = "github" | "google" | "demo";
 
 export interface IdpConfig {
   /** 对外 issuer（浏览器可见，经 gateway 暴露），如 http://127.0.0.1:8200/idp */
@@ -29,6 +29,8 @@ export interface IdpConfig {
   googleClientId: string;
   googleClientSecret: string;
   googleCallbackUri: string;
+  /** 仅用于本地开发和受控演示，默认关闭。 */
+  demoLoginEnabled: boolean;
 }
 
 const PLACEHOLDER = /^(replace-me|placeholder|changeme|todo)$/i;
@@ -90,6 +92,7 @@ export function readConfig(env: NodeJS.ProcessEnv): IdpConfig {
     googleClientId: env.GOOGLE_CLIENT_ID ?? "",
     googleClientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
     googleCallbackUri: (env.GOOGLE_CALLBACK_URI ?? `${issuer}/callback/google`).replace(/\/$/, ""),
+    demoLoginEnabled: env.IDP_DEMO_LOGIN_ENABLED?.trim().toLowerCase() === "true",
   };
 }
 
@@ -108,12 +111,10 @@ export function validEmail(value: string): boolean {
 
 export function emailAllowed(cfg: IdpConfig, email: string): boolean {
   const normalized = email.trim().toLowerCase();
+  // 未配置任何限制时：允许本地开发；一旦配置邮箱或域名白名单，两者任一命中才允许。
+  if (cfg.allowedEmails.length === 0 && !cfg.allowedEmailDomain) return true;
   if (cfg.allowedEmails.includes(normalized)) return true;
-  if (cfg.allowedEmailDomain) {
-    return normalized.endsWith(`@${cfg.allowedEmailDomain}`);
-  }
-  // 白名单未配置时：仍允许（简化版本地开发），生产建议配置
-  return true;
+  return Boolean(cfg.allowedEmailDomain && normalized.endsWith(`@${cfg.allowedEmailDomain}`));
 }
 
 function httpsUrlProblem(label: string, value: string, requireHttps: boolean): string | null {
@@ -149,10 +150,13 @@ export function bootProblems(cfg: IdpConfig, isProd: boolean): string[] {
     problems.push("IDP_SIGNING_JWK must be a P-256 private JSON Web Key (kty EC, crv P-256, with d)");
   }
 
-  if (isMissingOrPlaceholder(cfg.githubClientId) || isMissingOrPlaceholder(cfg.githubClientSecret)) {
-    if (isMissingOrPlaceholder(cfg.googleClientId) || isMissingOrPlaceholder(cfg.googleClientSecret)) {
-      problems.push("at least one of (GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET) must be configured");
-    }
+  const githubConfigured = !isMissingOrPlaceholder(cfg.githubClientId) && !isMissingOrPlaceholder(cfg.githubClientSecret);
+  const googleConfigured = !isMissingOrPlaceholder(cfg.googleClientId) && !isMissingOrPlaceholder(cfg.googleClientSecret);
+  if (!cfg.demoLoginEnabled && !githubConfigured && !googleConfigured) {
+    problems.push("at least one of (GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET) or IDP_DEMO_LOGIN_ENABLED=true must be configured");
+  }
+  if (cfg.demoLoginEnabled && isProd) {
+    problems.push("IDP_DEMO_LOGIN_ENABLED must not be enabled in production");
   }
   if (!isMissingOrPlaceholder(cfg.githubClientId) || !isMissingOrPlaceholder(cfg.githubClientSecret)) {
     push(httpsUrlProblem("GITHUB_CALLBACK_URI", cfg.githubCallbackUri, isProd));

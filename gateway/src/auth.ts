@@ -31,6 +31,7 @@ export interface GatewayAuthConfig {
   providers: {
     github: boolean;
     google: boolean;
+    demo: boolean;
   };
 }
 
@@ -76,11 +77,15 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
     const url = new URL(req.url ?? "/", cfg.publicUrl);
     const returnTo = sanitizeReturnTo(url.searchParams.get("returnTo"), cfg.publicUrl);
     const provider = url.searchParams.get("provider");
-    if (provider !== "github" && provider !== "google") {
+    if (provider !== "github" && provider !== "google" && provider !== "demo") {
       return sendLoginPage(res, returnTo, cfg.providers);
     }
     if (!cfg.providers[provider]) {
       return sendLoginPage(res, returnTo, cfg.providers, `Sign-in with ${provider} is not configured.`);
+    }
+    const loginHint = provider === "demo" ? (url.searchParams.get("email") ?? "").trim().toLowerCase() : "";
+    if (provider === "demo" && !validEmail(loginHint)) {
+      return sendLoginPage(res, returnTo, cfg.providers, "Enter a valid email address for demo sign-in.");
     }
     const state = randomToken();
     const nonce = randomToken();
@@ -101,7 +106,7 @@ export function createAuthHandlers(cfg: GatewayAuthConfig) {
       setCookie(TMP_COOKIE, seal(tmp, tmpKey), { path: "/auth", maxAge: cfg.tmpTtlS, secure: cfg.secureCookies }),
     ]);
     res.writeHead(302, {
-      location: buildAuthorizeUrl(cfg.oidc, { state, nonce, challenge, provider }),
+      location: buildAuthorizeUrl(cfg.oidc, { state, nonce, challenge, provider, ...(loginHint ? { loginHint } : {}) }),
       "cache-control": "no-store",
     });
     res.end();
@@ -195,7 +200,17 @@ function sendLoginPage(
     providers.github ? `<a class="btn gh" href="${githubHref}"><span class="dot">GH</span> Continue with GitHub</a>` : "",
     providers.google ? `<a class="btn gg" href="${googleHref}"><span class="dot">G</span> Continue with Google</a>` : "",
   ].join("");
-  const content = buttons || `<p class="notice">No sign-in provider is configured. Ask your administrator to configure GitHub or Google OAuth.</p>`;
+  const demoCard = providers.demo
+    ? `<form class="demo" method="get" action="/auth/login">
+        <input type="hidden" name="provider" value="demo"><input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}">
+        <div class="demo-head"><span class="dot">DE</span><strong>Demo sign-in</strong></div>
+        <label for="demo-email">Email address</label>
+        <input id="demo-email" name="email" type="email" autocomplete="email" inputmode="email" placeholder="demo@example.com" required maxlength="254">
+        <button type="submit">Continue as demo user</button>
+        <p>No password or registration required. Demo access may be limited by your administrator.</p>
+      </form>`
+    : "";
+  const content = demoCard || buttons ? `${demoCard}${buttons}` : `<p class="notice">No sign-in provider is configured. Ask your administrator to configure GitHub or Google OAuth.</p>`;
   const noticeHtml = notice ? `<p class="notice">${escapeHtml(notice)}</p>` : "";
   const html = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Sign in · OpenPilot</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -209,6 +224,10 @@ function sendLoginPage(
   a.btn:hover{border-color:#3b82f6;background:#262b44}
   a.btn .dot{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
   .gh{background:#24292e}.gh .dot{background:#333}.gg{background:#1a73e8}.gg .dot{background:#fff;color:#1a73e8}
+  .demo{margin:0 0 16px;padding:16px;border:1px solid #285e61;border-radius:12px;background:linear-gradient(135deg,#102b31,#162534)}
+  .demo-head{display:flex;align-items:center;gap:9px;margin-bottom:12px}.demo .dot{width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:#2dd4bf;color:#042f2e;font-size:10px;font-weight:800}
+  .demo label{display:block;margin:0 0 5px;color:#cbd5e1;font-size:13px;font-weight:600}.demo input{box-sizing:border-box;width:100%;border:1px solid #3f5964;border-radius:8px;padding:10px 11px;background:#0f1b25;color:#f8fafc;font:inherit}.demo input:focus{outline:2px solid #2dd4bf;outline-offset:1px}
+  .demo button{width:100%;margin-top:10px;border:0;border-radius:8px;padding:10px 12px;background:#14b8a6;color:#042f2e;font:600 14px inherit;cursor:pointer}.demo button:hover{background:#2dd4bf}.demo p{margin:8px 0 0;color:#a7c8c8;font-size:12px;line-height:1.45}
   .notice{color:#fbbf24;background:#2a2312;border:1px solid #5c4a1e;border-radius:10px;padding:10px 12px;font-size:14px}
 </style>
 <main><div class="card">
@@ -248,6 +267,10 @@ function sendErrorPage(res: ServerResponse, heading: string, detail: string): vo
     "x-robots-tag": "noindex, nofollow",
   });
   res.end(html);
+}
+
+function validEmail(value: string): boolean {
+  return value.length <= 254 && /^[^@\s,;<>\"]+@[^@\s,;<>\"]+\.[^@\s,;<>\"]+$/.test(value);
 }
 
 function escapeHtml(value: string): string {
