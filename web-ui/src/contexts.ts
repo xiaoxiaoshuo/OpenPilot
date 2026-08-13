@@ -300,7 +300,7 @@ export function scopeFilterControl(current: string | null, onSelect: (scopeId: s
 function sessionsIn(scopeId: string): CoreSession[] {
   const me = appState.me?.user ?? "";
   return sessionsState.list
-    .filter((s) => s.scopeId === scopeId && !s.archived && s.threadRef.startsWith(`web:${me}:`))
+    .filter((s) => s.scopeId === scopeId && s.threadRef.startsWith(`web:${me}:`))
     .sort((a, b) => activityOf(b) - activityOf(a));
 }
 

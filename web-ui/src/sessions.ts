@@ -4,9 +4,7 @@ import { live } from "lit/directives/live.js";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import {
-  Archive,
   Binoculars,
-  ArchiveRestore,
   ChevronDown,
   ChevronRight,
   Cog,
@@ -22,7 +20,6 @@ import {
   RefreshCw,
   Search,
   SquareTerminal,
-  Trash2,
   User,
   Users,
   X,
@@ -63,7 +60,7 @@ import {
 } from "./session-list";
 import { hideTooltip, showTooltip } from "./tooltip";
 import { errMessage } from "../../core/chassis/src/errors";
-import { copyText, fieldSelect, icon, relTime } from "./ui";
+import { copyText, icon, relTime } from "./ui";
 import { listPageTpl } from "./list-page";
 import {
   contextsState,
@@ -115,13 +112,10 @@ let recentContextsRequest: Promise<void> | null = null;
 const RECENT_CONTEXT_MAX_AGE_MS = 30_000;
 let renameDraft = "";
 const refreshingTitleIds = new Set<string>();
-let showArchived = false;
-
 let chatsPageScope: string | null = null;
 let chatsPageQuery = "";
 let chatsPageTagQuery = "";
 let chatsPageStatus: ChatBrowseStatus = "active";
-let chatsPageSurface: "all" | "web" | "slack" = "all";
 let chatsPageHost: HTMLElement | null = null;
 
 export function resetSessionsState(): void {
@@ -133,12 +127,10 @@ export function resetSessionsState(): void {
   sessionsState.collapsedProjectScopes.clear();
   renameDraft = "";
   refreshingTitleIds.clear();
-  showArchived = false;
   chatsPageScope = null;
   chatsPageQuery = "";
   chatsPageTagQuery = "";
   chatsPageStatus = "active";
-  chatsPageSurface = "all";
   chatsPageHost = null;
   recentContextsRequest = null;
 }
@@ -203,10 +195,10 @@ export function defaultSessionTitle(s: CoreSession): string {
   const project = projectName(s.scopeId);
   if (project) return project;
   const surface = surfaceOf(s);
-  if (surface === "web") return "Web chat";
-  if (s.type === "channel") return channelLabel(s) ?? "Channel";
-  if (s.type === "group") return groupDmText(s.channelName) ?? s.channelName?.trim() ?? "Group DM";
-  return "Direct message";
+  if (surface === "web") return t("sessions.webChat");
+  if (s.type === "channel") return channelLabel(s) ?? t("sessions.channel");
+  if (s.type === "group") return groupDmText(s.channelName) ?? s.channelName?.trim() ?? t("sessions.groupDm");
+  return t("sessions.directMessage");
 }
 
 function channelLabel(s: CoreSession): string | null {
@@ -262,18 +254,15 @@ function visibleSessions(): CoreSession[] {
 export function renderList(): void {
   if (!appState.listEl || appState.currentView !== "chats") return;
   const visible = visibleSessions();
-  const active = visible.filter((s) => !s.archived);
-  const archived = visible.filter((s) => s.archived);
-  const { pinned, rest } = splitPinned(active);
+  const { pinned, rest } = splitPinned(visible);
   const activeItems = recentItemsFor(rest);
-  const archivedItems: RecentItem[] = archived.map((session) => ({ kind: "session", session }));
   armMidnightRefresh();
   render(
     html`
       ${
         pinned.length
           ? html`
-              <div class="recents-group pinned-head">${icon(Pin, 11)}<span>Pinned</span></div>
+              <div class="recents-group pinned-head">${icon(Pin, 11)}<span>${t("sessions.pinned")}</span></div>
               ${repeat(
                 pinned,
                 (session) => session.threadRef,
@@ -283,24 +272,12 @@ export function renderList(): void {
           : nothing
       }
       ${groupedRows(activeItems)}
-      ${
-        archived.length
-          ? html`
-              <button class="archived-toggle ${showArchived ? "open" : ""}" @click=${toggleShowArchived}>
-                ${icon(showArchived ? ChevronDown : ChevronRight, 14)} ${icon(Archive, 14)}
-                <span>Archived</span>
-                <span class="archived-count">${archived.length}</span>
-              </button>
-              ${showArchived ? groupedRows(archivedItems) : nothing}
-            `
-          : nothing
-      }
       ${sessionsNotice ? html`<div class="empty" style="padding:16px">${sessionsNotice}</div>` : ""}
-      ${sessionsLoading && visible.length === 0 ? html`<div class="empty" style="padding:16px">Loading conversations...</div>` : ""}
+      ${sessionsLoading && visible.length === 0 ? html`<div class="empty" style="padding:16px">${t("sessions.loadingConversations")}</div>` : ""}
       ${
         !sessionsLoading && !sessionsNotice && visible.length === 0
           ? html`<div class="empty" style="padding:16px">
-              ${sessionsState.list.length ? "Slack conversations hidden." : "No conversations yet."}
+              ${sessionsState.list.length ? t("sessions.slackConversationsHidden") : t("sessions.noConversations")}
             </div>`
           : ""
       }
@@ -320,15 +297,15 @@ function recentItem(item: RecentItem): TemplateResult {
   if (item.groupKind === "personal") glyph = User;
   else if (item.groupKind === "channel") glyph = Hash;
   else if (item.groupKind === "group") glyph = Users;
-  let fallbackName = "Project";
-  if (item.groupKind === "channel") fallbackName = "Channel";
-  else if (item.groupKind === "group") fallbackName = "Group DM";
+  let fallbackName = t("sessions.project");
+  if (item.groupKind === "channel") fallbackName = t("sessions.channel");
+  else if (item.groupKind === "group") fallbackName = t("sessions.groupDm");
   const name = item.name ?? fallbackName;
   const childrenId = `recent-${item.scopeId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const menuKey = projectMenuKey(item.scopeId);
   const menuOpen = sessionsState.openMenuId === menuKey;
   return html`
-    <section class="recent-project ${item.sessions.some(isActiveRow) ? "active" : ""}" aria-label=${`${name} project`}>
+    <section class="recent-project ${item.sessions.some(isActiveRow) ? "active" : ""}" aria-label=${t("sessions.projectAriaLabel", { name })}>
       ${
         sessionsState.renamingId === menuKey
           ? projectRenameRow(item)
@@ -349,8 +326,8 @@ function recentItem(item: RecentItem): TemplateResult {
                   class="session-menu-btn"
                   data-menu-id=${menuKey}
                   type="button"
-                  title="Project options"
-                  aria-label=${`Options for ${name}`}
+                  title=${t("sessions.projectOptions")}
+                  aria-label=${t("sessions.optionsFor", { name })}
                   aria-haspopup="menu"
                   aria-expanded=${menuOpen ? "true" : "false"}
                   @click=${(e: Event) => toggleSessionMenu(e, menuKey)}
@@ -362,8 +339,8 @@ function recentItem(item: RecentItem): TemplateResult {
               <button
                 class="recent-project-new-chat"
                 type="button"
-                aria-label=${`New chat in ${name}`}
-                title=${`New chat in ${name}`}
+                aria-label=${t("sessions.newChatIn", { name })}
+                title=${t("sessions.newChatIn", { name })}
                 @click=${(event: Event) => startProjectChat(event, item.scopeId, item.name)}
               >
                 ${icon(Plus, 14)}
@@ -405,7 +382,7 @@ function projectMenuPopover(item: Extract<RecentItem, { kind: "project" }>): Tem
         role="menuitem"
         @click=${() => openProjectFromMenu(item.scopeId)}
       >
-        ${icon(Folder, 15)}<span>View project</span>
+        ${icon(Folder, 15)}<span>${t("sessions.viewProject")}</span>
       </button>
       ${
         owned
@@ -415,7 +392,7 @@ function projectMenuPopover(item: Extract<RecentItem, { kind: "project" }>): Tem
               role="menuitem"
               @click=${() => beginRename(projectMenuKey(item.scopeId), item.name ?? "")}
             >
-              ${icon(Pencil, 15)}<span>Rename</span>
+              ${icon(Pencil, 15)}<span>${t("sessions.renameProject")}</span>
             </button>`
           : nothing
       }
@@ -431,7 +408,7 @@ function openProjectFromMenu(scopeId: string): void {
 function projectRenameRow(item: Extract<RecentItem, { kind: "project" }>): TemplateResult {
   const menuKey = projectMenuKey(item.scopeId);
   return html`<div class="recent-project-head renaming">
-    ${renameInput(menuKey, "Rename project", () => commitProjectRename(item))}
+    ${renameInput(menuKey, t("sessions.renameProject"), () => commitProjectRename(item))}
   </div>`;
 }
 
@@ -466,22 +443,20 @@ export function drawChatsPage(): void {
   const q = chatsPageQuery.trim().toLowerCase();
   const rows = [...sessionsState.list]
     .filter((s) => chatBrowseStatusMatches(s, chatsPageStatus))
-    .filter((s) => chatsPageSurface === "all" || surfaceOf(s) === chatsPageSurface)
     .filter((s) => (chatsPageScope ? s.scopeId === chatsPageScope : true))
     .filter((s) => !q || chatMatches(s, q))
     .filter((s) => !chatsPageTagQuery || (s.tags ?? []).some((tag) => tag.toLowerCase().includes(chatsPageTagQuery)))
     .sort((a, b) => activityOf(b) - activityOf(a))
     .map((s) => chatPageRow(s));
-  let empty = "No conversations yet — start a new chat.";
-  if (sessionsLoading && sessionsState.list.length === 0) empty = "Loading conversations…";
+  let empty = t("sessions.noConversationsStart");
+  if (sessionsLoading && sessionsState.list.length === 0) empty = t("sessions.loadingConversations");
   else if (
     chatsPageScope ||
     q ||
     chatsPageTagQuery ||
-    chatsPageStatus !== "active" ||
-    chatsPageSurface !== "all"
+    chatsPageStatus !== "active"
   ) {
-    empty = "No conversations match.";
+    empty = t("sessions.noConversationsMatch");
   }
   render(
     listPageTpl({
@@ -502,7 +477,7 @@ export function drawChatsPage(): void {
         },
       },
       filters: html`<div class="chat-filters">
-        <div class="resource-tabs" role="tablist" aria-label="Conversation status">
+        <div class="resource-tabs" role="tablist" aria-label=${t("sessions.conversationStatus")}>
           ${(
                           [
               ["active", t("sessions.active")],
@@ -531,8 +506,8 @@ export function drawChatsPage(): void {
           ${icon(Search, 15)}
           <input
             type="search"
-            aria-label="Search tags"
-            placeholder="Search tags…"
+            aria-label=${t("sessions.searchTags")}
+            placeholder=${t("sessions.searchTagsPlaceholder")}
             .value=${live(chatsPageTagQuery)}
             @input=${(e: Event) => {
               chatsPageTagQuery = (e.currentTarget as HTMLInputElement).value.trim().toLowerCase();
@@ -540,21 +515,6 @@ export function drawChatsPage(): void {
             }}
           />
         </label>
-        <label class="list-select"
-          ><span>Surface</span>${fieldSelect({
-            compact: true,
-            value: chatsPageSurface,
-            onChange: (value) => {
-              chatsPageSurface = value as typeof chatsPageSurface;
-              drawChatsPage();
-            },
-            options: [
-              html`<option value="all">All surfaces</option>`,
-              html`<option value="web">Web</option>`,
-              html`<option value="slack">Slack</option>`,
-            ],
-          })}</label
-        >
       </div>`,
       rows,
       empty,
@@ -596,9 +556,9 @@ function sessionWorking(s: CoreSession): boolean {
 
 function statusMarks(s: CoreSession): TemplateResult {
   const ind = rowIndicators(s, liveThreads());
-  return html`${ind.working ? html`<span class="working-dot" ${ref(syncWorkingPulse)} title="Agent is working" aria-label="Agent is working"></span>` : nothing}${
+  return html`${ind.working ? html`<span class="working-dot" ${ref(syncWorkingPulse)} title=${t("sessions.working")} aria-label=${t("sessions.working")}></span>` : nothing}${
     ind.awaiting
-      ? html`<span class="awaiting-dot" title="Waiting for your reply" aria-label="Waiting for your reply"></span>`
+      ? html`<span class="awaiting-dot" title=${t("sessions.awaitingReply")} aria-label=${t("sessions.awaitingReply")}></span>`
       : nothing
   }${
     ind.background
@@ -658,7 +618,7 @@ function chatPageRow(s: CoreSession): TemplateResult {
           ${scopeChip(s.scopeId, s.channelName ?? null)}
           ${surfaceOf(s) === "slack" ? html`<span class="surface surface-slack">${slackLogo(13)}</span>` : nothing}
           ${(s.tags ?? []).map((tag) => html`<span class="chat-tag-chip">${tag}</span>`)}
-          ${readOnly ? html`<span class="ro-lock" title="Read-only">${icon(Lock, 12)}</span>` : nothing}
+          ${readOnly ? html`<span class="ro-lock" title=${t("sessions.readOnly")}>${icon(Lock, 12)}</span>` : nothing}
           <span class="list-row-date">${listWhen(activityOf(s))}</span>
         </span>
       </a>
@@ -668,8 +628,8 @@ function chatPageRow(s: CoreSession): TemplateResult {
               <button
                 class="icon-btn"
                 type="button"
-                title="Copy link"
-                aria-label=${`Copy link to ${sessionTitle(s)}`}
+                title=${t("sessions.copyLink")}
+                aria-label=${t("sessions.copyLinkTo", { name: sessionTitle(s) })}
                 @click=${() => void copyText(sessionLink(location.origin, UI_BASE, s.id))}
               >
                 ${icon(Link, 14)}
@@ -677,26 +637,14 @@ function chatPageRow(s: CoreSession): TemplateResult {
               <button
                 class="icon-btn"
                 type="button"
-                title=${s.pinned ? "Unpin" : "Pin"}
-                aria-label=${`${s.pinned ? "Unpin" : "Pin"} ${sessionTitle(s)}`}
+                title=${s.pinned ? t("sessions.unpin") : t("sessions.pin")}
+                aria-label=${`${s.pinned ? t("sessions.unpin") : t("sessions.pin")} ${sessionTitle(s)}`}
                 @click=${() => {
                   setPinned(s, !s.pinned);
                   drawChatsPage();
                 }}
               >
                 ${s.pinned ? icon(PinOff, 14) : icon(Pin, 14)}
-              </button>
-              <button
-                class="icon-btn"
-                type="button"
-                title=${s.archived ? "Unarchive" : "Archive"}
-                aria-label=${`${s.archived ? "Unarchive" : "Archive"} ${sessionTitle(s)}`}
-                @click=${() => {
-                  setArchived(s, !s.archived);
-                  drawChatsPage();
-                }}
-              >
-                ${s.archived ? icon(ArchiveRestore, 14) : icon(Archive, 14)}
               </button>
             </span>`
           : nothing
@@ -790,7 +738,7 @@ function sessionRow(s: CoreSession, projectChild = false): TemplateResult {
   const refreshingTitle = saved && refreshingTitleIds.has(s.id);
   const untitledProjectChild = projectChild && !s.title?.trim();
   let title = sessionTitle(s);
-  if (untitledProjectChild) title = surfaceOf(s) === "web" ? "Web chat" : "New chat";
+  if (untitledProjectChild) title = surfaceOf(s) === "web" ? t("sessions.webChat") : t("sessions.newChat");
   const readOnly = !isContinuable(s, appState.me?.user ?? "");
   const surface = surfaceOf(s);
   const context = projectChild ? null : rowContext(s);
@@ -805,10 +753,10 @@ function sessionRow(s: CoreSession, projectChild = false): TemplateResult {
     title,
     surface !== "web" ? surface : null,
     context,
-    working ? "agent is working" : null,
-    s.awaitingInput ? "waiting for your reply" : null,
-    readOnly ? "read-only" : null,
-    s.pinned ? "pinned" : null,
+    working ? t("sessions.working") : null,
+    s.awaitingInput ? t("sessions.awaitingReply") : null,
+    readOnly ? t("sessions.readOnly") : null,
+    s.pinned ? t("sessions.pinned") : null,
     relTime(activityOf(s)),
   ]
     .filter(Boolean)
@@ -838,7 +786,7 @@ function sessionRow(s: CoreSession, projectChild = false): TemplateResult {
         }}
       >
         <div class="title" aria-live="polite">
-          ${statusMarks(s)}${surfaceGlyph(s)}${readOnly ? html`<span class="ro-lock" title="Read-only">${icon(Lock, 12)}</span>` : nothing}<span
+          ${statusMarks(s)}${surfaceGlyph(s)}${readOnly ? html`<span class="ro-lock" title=${t("sessions.readOnly")}>${icon(Lock, 12)}</span>` : nothing}<span
             class="tl"
             >${titleContent}</span
           >${context ? html`<span class="row-context" title=${context}>${context}</span>` : nothing}
@@ -848,22 +796,10 @@ function sessionRow(s: CoreSession, projectChild = false): TemplateResult {
         saved
           ? html`<div class="session-menu">
               <button
-                class="session-menu-btn session-archive-btn"
-                type="button"
-                title=${s.archived ? t("sessions.restore") : t("sessions.delete")}
-                aria-label=${`${s.archived ? t("sessions.restore") : t("sessions.delete")} ${sessionTitle(s)}`}
-                @click=${(e: Event) => {
-                  e.stopPropagation();
-                  setArchived(s, !s.archived);
-                }}
-              >
-                ${s.archived ? icon(ArchiveRestore, 15) : icon(Trash2, 15)}
-              </button>
-              <button
                 class="session-menu-btn"
                 data-menu-id=${s.id}
                 type="button"
-                title="Conversation options"
+                title=${t("sessions.conversationOptions")}
                 aria-haspopup="menu"
                 aria-expanded=${menuOpen ? "true" : "false"}
                 @click=${(e: Event) => toggleSessionMenu(e, s.id)}
@@ -903,7 +839,6 @@ const placeSessionMenu = (el?: Element): void => {
 };
 
 function sessionMenuPopover(s: CoreSession): TemplateResult {
-  const archived = Boolean(s.archived);
   const pinned = Boolean(s.pinned);
   const refreshingTitle = refreshingTitleIds.has(s.id);
   return html`
@@ -926,9 +861,6 @@ function sessionMenuPopover(s: CoreSession): TemplateResult {
       >
         ${icon(RefreshCw, 15)}<span>${refreshingTitle ? t("sessions.refreshingTitle") : t("sessions.refreshTitle")}</span>
       </button>
-      <button class="session-menu-option" type="button" role="menuitem" @click=${() => setArchived(s, !archived)}>
-        ${archived ? icon(ArchiveRestore, 15) : icon(Trash2, 15)}<span>${archived ? t("sessions.restore") : t("sessions.delete")}</span>
-      </button>
       ${sessionColorRow(s)}
     </div>
   `;
@@ -940,24 +872,24 @@ function sessionColorRow(s: CoreSession): TemplateResult {
   const current = s.color?.toLowerCase() ?? null;
   const isPreset = SESSION_COLORS.includes(current as (typeof SESSION_COLORS)[number]);
   return html`
-    <div class="session-menu-colors" role="group" aria-label="Row color">
+    <div class="session-menu-colors" role="group" aria-label=${t("sessions.rowColor")}>
       ${SESSION_COLORS.map(
         (c) => html`
           <button
             class="color-swatch ${current === c ? "selected" : ""}"
             type="button"
             style=${`--swatch:${c}`}
-            title=${`Color row ${c}`}
-            aria-label=${`Color row ${c}`}
+            title=${t("sessions.colorRow", { color: c })}
+            aria-label=${t("sessions.colorRow", { color: c })}
             aria-pressed=${current === c ? "true" : "false"}
             @click=${() => setColor(s, current === c ? null : c)}
           ></button>
         `,
       )}
-      <label class="color-swatch custom ${current && !isPreset ? "selected" : ""}" title="Custom color (RGB picker)">
+      <label class="color-swatch custom ${current && !isPreset ? "selected" : ""}" title=${t("sessions.customColor")}>
         <input
           type="color"
-          aria-label="Custom row color"
+          aria-label=${t("sessions.customRowColor")}
           value=${current ?? "#6366f1"}
           @click=${(e: Event) => e.stopPropagation()}
           @input=${(e: InputEvent) => previewColor(s, (e.currentTarget as HTMLInputElement).value)}
@@ -969,8 +901,8 @@ function sessionColorRow(s: CoreSession): TemplateResult {
           ? html`<button
               class="color-swatch clear"
               type="button"
-              title="Clear color"
-              aria-label="Clear row color"
+              title=${t("sessions.clearColor")}
+              aria-label=${t("sessions.clearColor")}
               @click=${() => setColor(s, null)}
             >
               ${icon(X, 12)}
@@ -983,7 +915,7 @@ function sessionColorRow(s: CoreSession): TemplateResult {
 
 function renameRow(s: CoreSession): TemplateResult {
   return html`<div class="session-row renaming">
-    ${renameInput(s.id, "Rename conversation", () => commitRename(s))}
+    ${renameInput(s.id, t("sessions.renameConversation"), () => commitRename(s))}
   </div>`;
 }
 
@@ -1009,11 +941,6 @@ function renameInput(menuKey: string, ariaLabel: string, commit: () => Promise<v
       @click=${(e: Event) => e.stopPropagation()}
     />
   `;
-}
-
-function toggleShowArchived(): void {
-  showArchived = !showArchived;
-  renderList();
 }
 
 export function toggleWebOnly(): void {
@@ -1090,11 +1017,6 @@ async function commitRename(s: CoreSession): Promise<void> {
   const desired = !next || next === defaultSessionTitle(s) ? null : next;
   if (desired === null && !resolved) return;
   await persistSessionPatch(s.id, { title: desired });
-}
-
-function setArchived(s: CoreSession, archived: boolean): void {
-  sessionsState.openMenuId = null;
-  void persistSessionPatch(s.id, { archived });
 }
 
 function setPinned(s: CoreSession, pinned: boolean): void {
@@ -1192,7 +1114,7 @@ export async function refreshSessions(
     return true;
   } catch (e) {
     if (seq !== sessionRefreshSeq) return false;
-    if (!opts.silent) sessionsNotice = errMessage(e, "Failed to load conversations.");
+    if (!opts.silent) sessionsNotice = errMessage(e, t("sessions.loadFailed"));
     return false;
   } finally {
     listSettled?.();
@@ -1254,7 +1176,7 @@ export async function openSessionInto(
   }
 
   if (!entriesRes) {
-    if (tracked) showMainEmpty("Couldn't load this conversation. Check your connection and click it again.");
+    if (tracked) showMainEmpty(t("sessions.openFailed"));
     renderList();
     return;
   }

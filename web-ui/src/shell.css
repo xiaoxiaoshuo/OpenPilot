@@ -901,38 +901,6 @@ a.chat-row-open {
   outline: none;
   border-color: color-mix(in srgb, var(--foreground) 30%, transparent);
 }
-.archived-toggle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 6px;
-  padding: 7px 11px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-align: left;
-}
-.archived-toggle:hover {
-  background: var(--secondary);
-  color: var(--foreground);
-}
-.archived-toggle svg {
-  flex-shrink: 0;
-}
-.archived-toggle .archived-count {
-  margin-left: auto;
-  font-weight: 500;
-  opacity: 0.75;
-}
-
 .sidebar-footer {
   display: flex;
   align-items: center;
@@ -4305,8 +4273,7 @@ a.chat-row-open {
   .recent-project-toggle,
   .session,
   .web-only-toggle,
-  .session-menu-option,
-  .archived-toggle {
+  .session-menu-option {
     min-height: 44px;
   }
   .session {

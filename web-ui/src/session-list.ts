@@ -19,7 +19,7 @@ export function activityOf(s: CoreSession): number {
   return s.lastActivityAt ?? s.createdAt;
 }
 
-export type ChatBrowseStatus = "active" | "waiting" | "archived";
+export type ChatBrowseStatus = "active" | "waiting";
 
 export function splitPinned<T extends Pick<CoreSession, "pinned">>(sessions: readonly T[]): { pinned: T[]; rest: T[] } {
   const pinned: T[] = [];
@@ -29,11 +29,9 @@ export function splitPinned<T extends Pick<CoreSession, "pinned">>(sessions: rea
 }
 
 export function chatBrowseStatusMatches(
-  session: Pick<CoreSession, "archived" | "awaitingInput">,
+  session: Pick<CoreSession, "awaitingInput">,
   status: ChatBrowseStatus,
 ): boolean {
-  if (status === "archived") return Boolean(session.archived);
-  if (session.archived) return false;
   return status === "waiting" ? Boolean(session.awaitingInput) : !session.awaitingInput;
 }
 

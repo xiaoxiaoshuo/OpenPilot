@@ -45,7 +45,7 @@ test("mobile sidebar is modal, dismissible, and sized for touch", () => {
   assert.match(compactCss, /\.layout\.sidebar-closed \.sidebar-scrim \{\s*display: none;/);
   assert.match(
     compactCss,
-    /\.new-chat,[\s\S]*\.navrow,[\s\S]*\.nav-section-toggle,[\s\S]*\.web-only-toggle,[\s\S]*\.session-menu-option,[\s\S]*\.archived-toggle \{\s*min-height: 44px;/,
+    /\.new-chat,[\s\S]*\.navrow,[\s\S]*\.nav-section-toggle,[\s\S]*\.web-only-toggle,[\s\S]*\.session-menu-option \{\s*min-height: 44px;/,
   );
   assert.match(compactCss, /\.session-menu-btn,[\s\S]*\.recent-project-new-chat \{\s*width: 44px;\s*height: 44px;/);
   assert.match(compactCss, /\.session-menu\s*\{\s*right:\s*0;\s*margin-top:\s*-22px;\s*\}/);
@@ -97,7 +97,7 @@ test("touch layouts expose row actions and preserve readable composer choices", 
   assert.match(compactCss, /\.composer-right \.model-control \{\s*flex: 1 1 96px;/);
   assert.match(compactCss, /\.pane-refresh \{\s*width: 44px;\s*height: 44px;\s*flex-basis: 44px;/);
   assert.match(compactCss, /\.project-create-button \{\s*width: 44px;\s*height: 44px;/);
-  assert.match(contexts, /project-create-button"\s+type="button"\s+aria-label="New project"/);
+  assert.match(contexts, /project-create-button"\s+type="button"\s+aria-label=\$\{t\("contexts\.newProject"\)\}/);
   assert.match(
     compactCss,
     /\.chat-scroll \{\s*padding-right: max\(var\(--chat-pad\), env\(safe-area-inset-right\)\);\s*padding-left: max\(var\(--chat-pad\), env\(safe-area-inset-left\)\)/,
